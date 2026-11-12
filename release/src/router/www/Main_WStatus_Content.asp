@@ -251,7 +251,7 @@ function generate_clients(clientsarray) {
 			}
 
 			if (hostname.length > 24) {		// Name
-				code +=`<br><span style="${secondFieldStyle}"${hostname}">${hostname.substring(0,20)}...</span></td>`;
+				code +=`<br><span style="${secondFieldStyle}" title="${htmlEnDeCode.htmlEncode(hostname)}">${htmlEnDeCode.htmlEncode(hostname.substring(0,20))}...</span></td>`;
 			} else {
 				code +=`<br><span style="${secondFieldStyle}">${htmlEnDeCode.htmlEncode(hostname)}</span></td>`;
 			}
@@ -275,7 +275,7 @@ function generate_clients(clientsarray) {
 				code += '<br></td>'; // IPv6
 
 			code += `<td style="text-align: right;">${client[5]} / ${client[6]} Mbps`;	// Rate
-			code += `<br><span style="${secondFieldStyle}">${client[4]} dBm</td>`;	// RSSI
+			code += `<br><span style="${secondFieldStyle}">${client[4]} dBm</span></td>`;	// RSSI
 			code += `<td style="text-align: right;vertical-align:top;">${client[7]}</td>`;	// Time
 
 			if (client[8] != "") {
@@ -286,7 +286,7 @@ function generate_clients(clientsarray) {
 				code += '<td>';
 			}
 			if (client[10] != "") {
-				code += `<br><span style="${secondFieldStyle}">${client[10]}</td>`;  // BW
+				code += `<br><span style="${secondFieldStyle}">${client[10]}</span></td>`;  // BW
 			} else {
 				code += '</td>';
 			}
