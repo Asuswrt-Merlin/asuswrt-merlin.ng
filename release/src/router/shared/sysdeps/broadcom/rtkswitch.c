@@ -62,10 +62,12 @@ int rtkswitch_ioctl(int val, int val2, int val3)
 	case 0:		/* Get LAN phy status of all LAN ports */
 #endif
 	case 1:		/* Dump all counters of the specified LAN port */
+			close(fd);
 			return rtkswitch_port_stat(val2 + 1);
 	case 100:	/* set reset pin to 0 */
 	case 101:	/* set reset pin to 1 */
 	case 7:		/* Dump L2 lookup table of specified LAN port */
+			close(fd);
 			return rtkswitch_port_mactable(val2 + 1);
 	case 19:	// IOL 100M mode
 	case 20:	// IOL 1G mode
@@ -76,6 +78,7 @@ int rtkswitch_ioctl(int val, int val2, int val3)
 	case 25:	// IOL 2.5G mode5
 	case 26:	// IOL 2.5G mode6
 	case 27:	// IOL 2.5G mode7
+			close(fd);
 			return rtkswitch_testmode(val, val2, val3);
 	case 2:		/* Dump MAC status of specified LAN port */
 	case 3:		/* Get link status of the specified LAN port */
@@ -338,7 +341,6 @@ int rtkswitch_port_speed(int port)
 		memset(&pS, 0, sizeof(pS));
 		if (ioctl(fd, 0, &pS) < 0) {
 			perror("rtkswitch ioctl");
-			close(fd);
 		}
 
 		close(fd);
@@ -383,7 +385,6 @@ int rtkswitch_testmode(int val, int val2, int val3)
 		tm.mode = val3;
 		if (ioctl(fd, val, &tm) < 0) {
 			perror("rtkswitch ioctl");
-			close(fd);
 		}
 
 		close(fd);
@@ -404,7 +405,6 @@ int rtkswitch_port_duplex(int port)
 		memset(&pS, 0, sizeof(pS));
 		if (ioctl(fd, 0, &pS) < 0) {
 			perror("rtkswitch ioctl");
-			close(fd);
 		}
 
 		close(fd);
@@ -787,7 +787,6 @@ int rtkswitch_port_stat(int port)
 #endif
 		if (ioctl(fd, 1, &Port_cntrs) < 0) {
 			perror("rtkswitch ioctl");
-			close(fd);
 		} else
 			show_port_stat(&Port_cntrs);
 
@@ -831,7 +830,6 @@ int rtkswitch_port_mactable(int port)
 #endif
 		if (ioctl(fd, 7, &Port_mactable) < 0) {
 			perror("rtkswitch ioctl");
-			close(fd);
 		} else
 			show_port_mactable(&Port_mactable);
 
