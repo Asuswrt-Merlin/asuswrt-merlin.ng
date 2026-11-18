@@ -1880,6 +1880,7 @@ void remove_guillemets_form_str(char *str_in,int sizeofbuf)//sizeofbuf not strle
 		}
 		strncpy(str_in,tmp,len);
 		_dprintf("to [%s]\n",str_in);
+		free(tmp);
 	}
 }
 
