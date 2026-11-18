@@ -7628,6 +7628,23 @@ int vpnc_use_tunnel(int vpnc_unit, const char* proto)
 	}
 	return 0;
 }
+#else
+/* The prebuilt aaews/mastiff call these even when the UAC tunnel is not built,
+ * and fail with "undefined symbol: vpns_use_tunnel" without them. */
+int is_wgs_use_tunnel(const char *wgs_idx, const char *caller, const char *port)
+{
+	return 0;
+}
+
+int vpns_use_tunnel(void)
+{
+	return 0;
+}
+
+int vpnc_use_tunnel(int vpnc_unit, const char* proto)
+{
+	return 0;
+}
 #endif
 
 #if defined(RTCONFIG_ACCOUNT_BINDING)
