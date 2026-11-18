@@ -21708,6 +21708,7 @@ do_wrs_wbl_cgi(char *url, FILE *stream)
 					snprintf(tmp, end-head, "%s", head);
 					json_object_array_add(data, json_object_new_string(tmp));
 				}
+				fclose(fp);
 			}
 		}
 		else {
