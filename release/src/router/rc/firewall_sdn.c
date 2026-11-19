@@ -756,7 +756,6 @@ int _get_urlf_pf(const int urlf_idx, URLF_PF *pf)
 	char name[64];
 	char *nv, *nvp, *b;
 	char *enable, *addr, *url, *desc, *mode;
-	llist *lst;
 	URLF_RULE *rule;
 
 	if (!urlf_idx || !pf)
@@ -813,15 +812,14 @@ int _get_urlf_pf(const int urlf_idx, URLF_PF *pf)
 				rule->url = strdup(url);
 			}
 
-			lst = calloc(1, sizeof(llist));
-			if (lst)
+			if (append_llist(&(pf->rl), rule) == 0)
 			{
-				lst->data = rule;
-				append_llist(&(pf->rl), rule);
 				++pf->rl_sz;
 			}
 			else
 			{
+				SAFE_FREE(rule->addr);
+				SAFE_FREE(rule->url);
 				SAFE_FREE(rule);
 			}
 		}
@@ -1290,7 +1288,6 @@ int _get_nwf_pf(const int nwf_idx, NWF_PF *pf)
 	char *nv, *nvp, *b;
 	char *enable, *desc, *mode, *date, *time1, *time2, *icmp;
 	char *src_ip, *src_port, *dst_ip, *dst_port, *proto;
-	llist *lst;
 	NWF_RULE *rule;
 
 	if (!nwf_idx || !pf)
@@ -1372,11 +1369,8 @@ int _get_nwf_pf(const int nwf_idx, NWF_PF *pf)
 			else
 				rule->proto = strdup("");
 
-			lst = calloc(1, sizeof(llist));
-			if (lst)
+			if (append_llist(&(pf->rl), rule) == 0)
 			{
-				lst->data = rule;
-				append_llist(&(pf->rl), rule);
 				++pf->rl_sz;
 			}
 			else
