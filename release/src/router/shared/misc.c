@@ -779,8 +779,10 @@ struct vlan_rules_s *get_vlan_rules(void)
 		return NULL;
 
 	vlan_rules = malloc(sizeof(struct vlan_rules_s));
-	if (!vlan_rules)
+	if (!vlan_rules) {
+		free(nv);
 		return NULL;
+	}
 
 	r = &vlan_rules->rules[0];
 	memset(vlan_rules, 0, sizeof(struct vlan_rules_s));
@@ -6740,6 +6742,25 @@ char *get_ddns_hostname(void)
 {
 	char *host = nvram_safe_get("ddns_hostname_x");
 	char *server = nvram_safe_get("ddns_server_x");
+	static char namecheap_host[256];
+
+	/* Namecheap stores the subdomain in hostname and the domain in username. */
+	if (strcmp(server, "WWW.NAMECHEAP.COM") == 0) {
+		char *domain = nvram_safe_get("ddns_username_x");
+		int len;
+
+		if (*host == '\0' || *domain == '\0')
+			return "";
+
+		if (strcmp(host, "@") == 0)
+			len = snprintf(namecheap_host, sizeof(namecheap_host), "%s", domain);
+		else
+			len = snprintf(namecheap_host, sizeof(namecheap_host), "%s.%s", host, domain);
+		if (len < 0 || (size_t)len >= sizeof(namecheap_host))
+			return "";
+
+		host = namecheap_host;
+	}
 
 	if ((strcmp(server, "WWW.DNSOMATIC.COM") == 0 && strcasecmp(host, "all.dnsomatic.com") == 0) ||
 	    (strcmp(server, "WWW.TUNNELBROKER.NET") == 0) ||

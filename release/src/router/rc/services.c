@@ -960,6 +960,7 @@ void create_passwd(void)
 					break;
 			}
 		}
+		free(nv);
 	}
 #endif
 
@@ -4883,8 +4884,10 @@ void write_static_leases(FILE *fp)
 	strlcpy(lan_if, nvram_get("lan_ifname")? : nvram_default_get("lan_ifname"), sizeof(lan_if));
 	ip1 = inet_network(nvram_safe_get("lan_ipaddr"));
 	lan_mask = inet_network(nvram_safe_get("lan_netmask"));
-	if (ip1 == -1 || lan_mask == -1)
+	if (ip1 == -1 || lan_mask == -1) {
+		free(nv);
 		return;
+	}
 	lan_net = ip1 & lan_mask;
 
 #if defined(RTCONFIG_PORT_BASED_VLAN) || defined(RTCONFIG_TAGGED_BASED_VLAN)
@@ -5274,7 +5277,8 @@ start_ddns(char *caller, int isAidisk)
 #endif
 
 	snprintf(ipv6_service_cur, sizeof(ipv6_service_cur), "%s", nvram_safe_get(ipv6_nvname_by_unit("ipv6_service", unit)));
-	logmessage(log_title, "current ipv6_service: %s | old ipv6_service: %s\n", ipv6_service_cur, nvram_safe_get("ddns_ipv6_service_old"));
+	if (nvram_get_int("ddns_debug"))
+		logmessage(log_title, "current ipv6_service: %s | old ipv6_service: %s\n", ipv6_service_cur, nvram_safe_get("ddns_ipv6_service_old"));
 
 	if (inet_addr_(wan_ip) == inet_addr_(nvram_safe_get("ddns_ipaddr")) &&
 		strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old")) == 0 &&
@@ -5285,7 +5289,8 @@ start_ddns(char *caller, int isAidisk)
 #endif
 		&& f_exists(cache_path) /* Not forced to restart DDNS */
 	) {
-		logmessage(log_title, "IP address, server and hostname have not changed since the last update.");
+		if (nvram_get_int("ddns_debug"))
+			logmessage(log_title, "IP address, server and hostname have not changed since the last update.");
 		if (!isAidisk) {
 			nvram_set("ddns_updated", "1");
 			/* for UI display */
@@ -5441,7 +5446,6 @@ start_ddns(char *caller, int isAidisk)
 		nvram_unset("ddns_ipaddr");
 		nvram_unset("ddns_status");
 		nvram_unset("ddns_updated");
-	}
 		logmessage(log_title, "Clear ddns cache.");
 #else
 		if ((!nvram_match("ddns_server_x_old", "") && strcmp(nvram_safe_get("ddns_server_x"), nvram_safe_get("ddns_server_x_old")) != 0)
@@ -5563,7 +5567,7 @@ start_ddns(char *caller, int isAidisk)
 				fprintf(fp, "custom namecheap {\n");
 				fprintf(fp, "ddns-server = dynamicdns.park-your-domain.com\n");
 				// We store the domain.tld in the username nvram
-				fprintf(fp, "ddns-path = \"/update?domain=%%u&password=%%p&host=%%h\"\n");
+				fprintf(fp, "ddns-path = \"/update?domain=%%u&password=%%p&host=%%h&ip=%%i\"\n");
 			} else {
 				fprintf(fp, "provider %s {\n", service);
 			}
@@ -10415,6 +10419,7 @@ void chilli_config(void)
 		fprintf(fp, "localusers %s\n", "/tmp/localusers");
 		if (!(local_fp = fopen("/tmp/localusers", "w"))) {
 			perror("/tmp/localusers");
+			fclose(fp);
 			return;
 		}
 		fprintf(local_fp, "noauth:noauth");
@@ -27237,7 +27242,7 @@ static void server_handler(int sock)
 	ret = select(sock+1, &rmask, NULL, NULL, &select_timeout);
 	if (ret > 0) {
 		FILE *fp;
-		char *buf;
+		char *buf = NULL;
 		int read_len = 0, tmp_len, buf_len;
 		len = read(sock, cmd, sizeof(cmd)-1);
 		if (len > 0) {
@@ -27249,11 +27254,14 @@ static void server_handler(int sock)
 				read_len = buf_len = 0;
 				while (1) {
 					buf_len += STEP_BUF_SIZE;
-					buf = (char *)realloc(buf, buf_len);
-					if (!buf) {
+					char *new_buf = (char *)realloc(buf, buf_len);
+					if (!new_buf) {
+						free(buf);
+						buf = NULL;
 						read_len=0;
 						break;
 					}
+					buf = new_buf;
 					tmp_len = fread(buf+read_len, 1, STEP_BUF_SIZE, fp);
 					read_len += tmp_len;
 					if (tmp_len < STEP_BUF_SIZE)
@@ -27273,6 +27281,7 @@ static void server_handler(int sock)
 				cmd[0]='\0';
 				write(sock, cmd, 1);
 			}
+			free(buf);
 		}
 	}
 	close(sock);
@@ -27486,13 +27495,15 @@ int realip_main(int argc, char *argv[])
 
 		if (!ret) {
 			FILE *fp = fopen(STUN_RESULT, "r");
-			while (fgets(buf, sizeof(buf), fp)) {
+			while (fp && fgets(buf, sizeof(buf), fp)) {
 				trimNL(buf);
 				if (is_valid_ip4(buf)) {
 					success = 1;
 					break;
 				}
 			}
+			if (fp)
+				fclose(fp);
 
 			if (success) {
 				printf("%s\n", buf);
