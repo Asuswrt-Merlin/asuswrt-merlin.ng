@@ -7678,6 +7678,66 @@ void start_spectrum(void)
 
 // TODO: so far, support wan0 only
 
+#ifdef RTCONFIG_SOFTWIRE46
+/*
+ * MAP-E / lw4o6 terminated on the router: the BR only delivers the ports
+ * of our PSID port set, and drops packets we send from other source ports.
+ * A UPnP/NAT-PMP/PCP mapping outside the set never receives anything, and
+ * its PUPNP "MASQUERADE --to-ports <eport>" rule, which POSTROUTING
+ * evaluates before the "--psid" MASQUERADE rules, even moves the client's
+ * outgoing packets for that socket to a port the BR drops.  Allow only the
+ * port set (intersected with the external range in use); miniupnpd then
+ * refuses other ports, and NAT-PMP/PCP pick the next allowed one.
+ * Same conditions as the "--psid" MASQUERADE rules in firewall.c.
+ * Returns -1 if not applicable, else the number of allow rules written
+ * (0 while the port set is not known yet: no mapping is allowed until
+ * wan_up() restarts miniupnpd).
+ */
+static int upnp_s46_allow(FILE *f, int unit, const char *lanip, const char *lanmask, const int *ports)
+{
+	char prefix[sizeof("wanXXXXXXXXXX_")];
+	char *nv, *item, *next;
+	int lo, hi, n = 0;
+
+	snprintf(prefix, sizeof(prefix), "wan%d_", unit);
+	switch (get_ipv4_service_by_unit(unit)) {
+	case WAN_V6PLUS:
+	case WAN_OCNVC:
+	case WAN_V6OPTION:
+		if (nvram_pf_get_int(prefix, "s46_hgw_case") == S46_CASE_MAP_HGW_ON)
+			return -1;
+		/* fall through */
+	case WAN_LW4O6:
+	case WAN_MAPE:
+		break;
+	default:
+		return -1;
+	}
+
+	if ((nv = strdup(nvram_safe_get(ipv6_nvname_by_unit("ipv6_s46_ports", unit)))) == NULL)
+		return -1;
+	for (item = strtok_r(nv, " ", &next); item; item = strtok_r(NULL, " ", &next)) {
+		if (sscanf(item, "%d-%d", &lo, &hi) != 2) {
+			if (sscanf(item, "%d", &lo) != 1)
+				continue;
+			hi = lo;
+		}
+		if (lo < ports[0])
+			lo = ports[0];
+		if (hi > ports[1])
+			hi = ports[1];
+		if (lo > hi)
+			continue;
+		fprintf(f, "allow %d-%d %s/%s %d-%d\n", lo, hi, lanip, lanmask, ports[2], ports[3]);
+		n++;
+	}
+	free(nv);
+
+	logmessage("upnp", "softwire: external ports limited to %d range(s) of the PSID port set", n);
+	return n;
+}
+#endif
+
 void start_upnp(void)
 {
 	FILE *f;
@@ -7983,17 +8043,22 @@ void start_upnp(void)
 				    (ports[1] = nvram_get_int("upnp_max_port_ext")) > 0 &&
 				    (ports[2] = nvram_get_int("upnp_min_port_int")) > 0 &&
 				    (ports[3] = nvram_get_int("upnp_max_port_int")) > 0) {
-					fprintf(f,
-						"allow %d-%d %s/%s %d-%d\n",
-						ports[0], ports[1],
-						lanip, lanmask,
-						ports[2], ports[3]
-					);
+					/* user-defined ranges */
 				}
 				else {
 					// by default allow only redirection of ports above 1024
-					fprintf(f, "allow 1024-65535 %s/%s 1024-65535\n", lanip, lanmask);
+					ports[0] = 1024; ports[1] = 65535;
+					ports[2] = 1024; ports[3] = 65535;
 				}
+#ifdef RTCONFIG_SOFTWIRE46
+				if (upnp_s46_allow(f, unit, lanip, lanmask, ports) < 0)
+#endif
+				fprintf(f,
+					"allow %d-%d %s/%s %d-%d\n",
+					ports[0], ports[1],
+					lanip, lanmask,
+					ports[2], ports[3]
+				);
 
 				/* For PCP */
 				min_lifetime = nvram_get_int("upnp_min_lifetime");
