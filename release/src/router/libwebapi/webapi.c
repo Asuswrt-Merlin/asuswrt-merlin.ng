@@ -115,7 +115,7 @@ int upload_server_ovpn_cert_cgi()
 				"dh",
 				"key",
 				"crl",
-				"extra"
+				"extra",
 				"static",
 				NULL
 			};
