@@ -319,7 +319,7 @@ static int erp_check_arp_stat(int model)
 		while (fgets(buf, sizeof(buf), fp))
 		{
 			memset(ifname, 0, sizeof(ifname));
-			if (sscanf(buf, "%*s %*s 0x%x %*s %*s %s", &flags, ifname) != 2) continue;
+			if (sscanf(buf, "%*s %*s 0x%x %*s %*s %19s", &flags, ifname) != 2) continue;	/* 19 == sizeof(ifname) - 1 */
 			ERP_DBG("ifname=%s, flags=%d\n", ifname, flags);
 			if (!strcmp(ifname, br_if) && (flags != 0)) br_n++;
 		}
@@ -329,7 +329,9 @@ static int erp_check_arp_stat(int model)
 
 	/* check ipv6 client for IPv6 */
 	eval("mkdir", "-p", ERP_FOLDER);
-	doSystem("ip -f inet6 neigh show dev %s > %s", nvram_safe_get("lan_ifname"), ERP_IPV6_ARP);
+	/* Use safe_do_system_to_file(): tokenized argv via _eval(), no shell,
+	 * so lan_ifname cannot be used for command injection. */
+	safe_do_system_to_file(ERP_IPV6_ARP, 0, "ip -f inet6 neigh show dev %s", nvram_safe_get("lan_ifname"));
 
 	if ((fp = fopen(ERP_IPV6_ARP, "r")) != NULL)
 	{
@@ -338,7 +340,7 @@ static int erp_check_arp_stat(int model)
 		{
 			memset(ifname, 0, sizeof(ifname));
 			memset(ipaddr, 0, sizeof(ipaddr));
-			if (sscanf(buf, "%s %*s %s %*s", ipaddr, ifname) != 2) continue;
+			if (sscanf(buf, "%127s %*s %19s %*s", ipaddr, ifname) != 2) continue;	/* sizeof(ipaddr/ifname) - 1 */
 			ERP_DBG("ipaddr=%s, ifname=%s\n", ipaddr, ifname);
 			if ( (ipaddr[0] == '2' || ipaddr[0] == '3')
 				&& ipaddr[0] != ':' && ipaddr[1] != ':'
@@ -353,14 +355,16 @@ static int erp_check_arp_stat(int model)
 
 #if defined(RTCONFIG_HND_ROUTER_AX_6756) || defined(RTCONFIG_HND_ROUTER_BE_4916)
 	/* check ipv4 client for IPv4 */
-	doSystem("ip -f inet neigh show dev %s > %s", nvram_safe_get("lan_ifname"), ERP_IPV4_ARP);
+	/* Use safe_do_system_to_file(): tokenized argv via _eval(), no shell,
+	 * so lan_ifname cannot be used for command injection. */
+	safe_do_system_to_file(ERP_IPV4_ARP, 0, "ip -f inet neigh show dev %s", nvram_safe_get("lan_ifname"));
 	if ((fp = fopen(ERP_IPV4_ARP, "r")) != NULL)
 	{
 		// while loop
 		while (fgets(buf, sizeof(buf), fp))
 		{
 			memset(stat, 0, sizeof(stat));
-			if (sscanf(buf, "%*s %*s %s %s", mac, stat) != 2) continue;
+			if (sscanf(buf, "%*s %*s %17s %19s", mac, stat) != 2) continue;	/* sizeof(mac/stat) - 1 */
 			ERP_DBG("mac=%s, stat=%s\n", mac, stat);
 #if defined(RTCONFIG_AI_SERVICE)
 			snprintf(aiboard_mac, sizeof(aiboard_mac), "%s", nvram_safe_get("aiboard_macaddr"));

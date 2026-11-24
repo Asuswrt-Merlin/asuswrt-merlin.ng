@@ -137,7 +137,7 @@
 #videoConference,
 #Customize{
 	width: 84px;
-	height: 84px;	
+	height: 84px;
 }
 
 #Game, #Game_act, #Game:hover,
@@ -180,7 +180,7 @@
 }
 
 #eLearning_act, #eLearning:hover{
-	background-image:url('images/New_ui/QoS_quick/elearning_act.svg');	
+	background-image:url('images/New_ui/QoS_quick/elearning_act.svg');
 }
 
 #videoConference{
@@ -264,9 +264,9 @@
 	var wans_dualwan_orig = '<% nvram_get("wans_dualwan"); %>';
 	var dualwan_type = wans_dualwan_orig.split(" ");
 	var wans_flag = (wans_dualwan_orig.search("none") != -1 || !parent.dualWAN_support) ? 0 : 1;
-if(dualwan_type.length == 2){	
+if(dualwan_type.length == 2){
 	var dualwan_primary = dualwan_type[0].toUpperCase();
-	var dualwan_primary_display = (dualwan_primary=="LAN") ? "Ethernet LAN":dualwan_primary;	
+	var dualwan_primary_display = (dualwan_primary=="LAN") ? "Ethernet LAN":dualwan_primary;
 	var dualwan_secondary = dualwan_type[1].toUpperCase();
 	var dualwan_secondary_display = (dualwan_secondary=="LAN") ? "Ethernet LAN":dualwan_secondary;
 	var dw_primary = dualwan_type[0].toLowerCase();
@@ -367,32 +367,17 @@ function show_up_down(value){
 	}
 }
 
-var GN_with_BandwidthLimeter = false;
-if(wl_info.band2g_support != '-1'){
-	var gn_array_2g_length = gn_array_2g.length;
-	for(var i=0;i<gn_array_2g_length;i++){
-		if(gn_array_2g[i][18] == "1"){	//GN with Bandwidth Limiter
-			GN_with_BandwidthLimeter = true;
-		}
-	}
-}
-if(wl_info.band5g_support != '-1'){
-	var gn_array_5g_length = gn_array_5g.length;
-	for(var j=0;j<gn_array_5g_length;j++){
-		if(gn_array_5g[j][18] == "1"){	//GN with Bandwidth Limiter
-			GN_with_BandwidthLimeter = true;
-		}
-	}
-}
-if(wl_info.band5g_2_support != '-1' || wl_info.band6g_support != '-1'){
-	var gn_array_5g_2_length = gn_array_5g_2.length;
-	for(var k=0;k<gn_array_5g_2_length;k++){
-		if(gn_array_5g_2[k][18] == "1"){	//GN with Bandwidth Limiter
-			GN_with_BandwidthLimeter = true;
-		}
-	}
-}
-var GN_with_Amazon_WSS_enabled = (amazon_wss_support && ((httpApi.amazon_wss.getStatue(0, 2) == "1") ? true : false));
+        var GN_with_BandwidthLimeter = [
+            { supported: wl_info.band2g_support,                                arr: gn_array_2g   },
+            { supported: wl_info.band5g_support,                                arr: gn_array_5g   },
+            { supported: wl_info.band5g_2_support || wl_info.band6g_support,    arr: gn_array_5g_2 },
+            { supported: wl_info.band6g_2_support || wl_info.band60g_support,   arr: gn_array_60g  },
+        ].some(function(band) {
+            return band.supported && band.arr.some(function(gn) {
+                return gn[0] == "1" && gn[18] == "1";	//GN with Bandwidth Limiter
+            });
+        });
+        var GN_with_Amazon_WSS_enabled = (amazon_wss_support && ((httpApi.amazon_wss.getStatue(0, 2) == "1") ? true : false));
 
 if(pm_support) {
 	var device_list = [<% pms_device_info(); %>][0];
@@ -468,7 +453,7 @@ function initial(){
 	if(router_boost_support){
       document.getElementById('router_boost_tr').style.display = "";
     }
-	
+
 	if(adaptiveqos_support){
 		document.getElementById('content_title').innerHTML = "<#menu5_3_2#> - <#Adaptive_QoS_Conf#>";
 		if(document.form.qos_enable.value == "1"){
@@ -519,7 +504,7 @@ function initial(){
 		//}
     show_settings("NonAdaptive");
 	}
-	
+
 
 	if(pm_support) {
 		collect_info();
@@ -626,7 +611,7 @@ function init_changeScale(){
 			document.form.ibw.value = (dsl_DataRateDown/1024).toFixed(2);
 		}
 		else{
-	
+
 			document.form.obw.value = (upload/1024).toFixed(2);
 			document.form.ibw.value = (download/1024).toFixed(2);
 		}
@@ -725,7 +710,7 @@ function validForm(){
 						document.form.obw.value = "100";
 					}
 					else{
-						document.form.obw.value = "1000";	
+						document.form.obw.value = "1000";
 					}
 				}
 				else{
@@ -734,7 +719,7 @@ function validForm(){
 						document.form.obw.value = (qos_xobw_orig/1024).toFixed(2);
 					}
 					else{
-						document.form.obw.value = "1000";       
+						document.form.obw.value = "1000";
 					}
 				}
 				return false;
@@ -799,7 +784,7 @@ function validForm(){
 				}
 
 				if(error_obw1 > 0){
-				
+
 					if(qos_xobw1_orig > 0){
 						document.form.obw1.value = (qos_xobw1_orig/1024).toFixed(2);
 					}
@@ -810,9 +795,9 @@ function validForm(){
 						document.form.obw1.value = "100";
 					}
 					else{
-						document.form.obw1.value = "1000";	
+						document.form.obw1.value = "1000";
 					}
-					
+
 					return false;
 				}
 
@@ -832,9 +817,9 @@ function validForm(){
 						document.form.ibw1.value = "300";
 					}
 					else{
-						document.form.ibw1.value = "1000";	
+						document.form.ibw1.value = "1000";
 					}
-					
+
 					return false;
 				}
 
@@ -868,10 +853,10 @@ function validForm(){
 					document.form.bwdpi_app_rulelist.disabled = "";
 					if(document.getElementById("Game_act")){
 						document.form.bwdpi_app_rulelist.value = "9,20<8<4<0,5,6,15,17<4,13<13,24<1,3,14<7,10,11,21,23<game";
-					}						
+					}
 					else if(document.getElementById("Media_act")){
 						document.form.bwdpi_app_rulelist.value = "9,20<4<0,5,6,15,17<4,13<8<13,24<1,3,14<7,10,11,21,23<media";
-					}						
+					}
 					else if(document.getElementById("Web_act")){
 						document.form.bwdpi_app_rulelist.value = "9,20<13,24<4<0,5,6,15,17<4,13<8<1,3,14<7,10,11,21,23<web";
 					}
@@ -880,10 +865,10 @@ function validForm(){
 					}
 					else if(document.getElementById("videoConference_act")){
 						document.form.bwdpi_app_rulelist.value = "9,20<0,5,6,15,17<4<4,13<13,24<8<1,3,14<7,10,11,21,23<videoConference";
-					}						
+					}
 					else{
 						document.form.bwdpi_app_rulelist.value = bwdpi_app_rulelist;
-					}				
+					}
 				}
 				else{
 					alert("<#Adaptive_QoS_priority_yet#>");
@@ -917,7 +902,7 @@ function determineActionScript(){
         if(router_boost_support) {
 			if(mtk_support)
 				document.form.action_script.value = "restart_routerboost;restart_qos;restart_firewall;";
-			else 
+			else
 				document.form.action_script.value = "restart_routerboost;restart_wireless;restart_qos;restart_firewall;";
         }
         else {
@@ -945,7 +930,7 @@ function determineActionScript(){
 		if(router_boost_support) {
 			if(mtk_support)
 					document.form.action_script.value = "restart_routerboost;restart_qos;restart_firewall;";
-			else	
+			else
 					document.form.action_script.value = "restart_routerboost;restart_wireless;restart_qos;restart_firewall;";
     }
     else {
@@ -972,7 +957,7 @@ function determineActionScript(){
 
 	if((document.form.qos_type_orig.value != document.form.qos_type.value) && document.form.qos_type.value == "0")
 		document.form.next_page.value = "Advanced_QOSUserRules_Content.asp";
-  
+
   if(router_boost_support)
   {
     routerboost_enable_setting();
@@ -1001,9 +986,9 @@ function submitQoS(){
 
 			if(reset_wan_to_fo.change_status){
 				reset_wan_to_fo.change_wan_mode(document.form);
-			}	
+			}
 
-			if(GN_with_Amazon_WSS_enabled && 
+			if(GN_with_Amazon_WSS_enabled &&
 				((document.form.qos_enable_orig.value == "1" && document.form.qos_enable.value == "0") || //Qos enable to disable
 				(document.form.qos_type_orig.value == "2" && document.form.qos_type.value != "2"))){ // Qos type is change from Bandwidth Limiter to other.
 					document.form.action_script.value = "restart_wireless;" + document.form.action_script.value;
@@ -1061,7 +1046,7 @@ function change_qos_type(value){
 	if(geforceNow_support)
 			document.getElementById('GeForce_type').checked = false;
     //if(router_boost_support) {
-    //  document.getElementById('router_boost_tr').style.display = "none";  
+    //  document.getElementById('router_boost_tr').style.display = "none";
     //}
     document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(1);
@@ -1088,7 +1073,7 @@ function change_qos_type(value){
 		document.getElementById('trad_type').checked = false;
 		document.getElementById('cake_type').checked = false;
 		document.getElementById('hw_aqm_type').checked = false;
-		document.getElementById('bw_limit_type').checked = false;		
+		document.getElementById('bw_limit_type').checked = false;
     document.getElementById('bandwidth_setting_tr').style.display = "";
 		if(geforceNow_support)
 			document.getElementById('GeForce_type').checked = false;
@@ -1302,7 +1287,7 @@ function check_actived(){
 	else if(bwdpi_app_rulelist.indexOf('media') != -1){
 		if(document.getElementById("Media")){
 			document.getElementById("Media").id = "Media_act";
-		}	
+		}
 	}
 	else if(bwdpi_app_rulelist.indexOf('web') != -1){
 		if(document.getElementById("Web")){
@@ -1407,7 +1392,7 @@ function gen_category_block(){
 
 	var index = 0;
 	var code = "";
-	
+
 	for(i=1;i<bwdpi_app_rulelist_row.length-1;i++){
 		for(j=1;j<cat_id_array.length;j++){
 			if(cat_id_array[j] == bwdpi_app_rulelist_row[i]){
@@ -1468,7 +1453,7 @@ function register_overHint(){
 
 function routerboost_enable_setting(){
   //if(document.getElementById("rb_on").checked && document.form.qos_enable.value == 1 && document.form.qos_type.value == 1){
-  if(document.getElementById("rb_on").checked){  
+  if(document.getElementById("rb_on").checked){
 	document.form.rb_enable.value = 1;
     document.form.re_rb_enable.value = 1;
   }
@@ -2026,7 +2011,7 @@ function set_overhead(entry) {
 			<input type="hidden" name="qos_type_orig" value="<% nvram_get("qos_type"); %>">
 			<input type="hidden" name="qos_type" value="<% nvram_get("qos_type"); %>">
       <input type="hidden" name="rb_enable" value="<% nvram_get("rb_enable"); %>">
-	  <input type="hidden" name="rb_enable_orig" value="<% nvram_get("rb_enable"); %>"> 
+	  <input type="hidden" name="rb_enable_orig" value="<% nvram_get("rb_enable"); %>">
 	<input type="hidden" name="re_rb_enable" value="<% nvram_get("re_rb_enable"); %>">
       <input type="hidden" name="qos_obw" value="<% nvram_get("qos_obw"); %>" disabled>
 			<input type="hidden" name="qos_ibw" value="<% nvram_get("qos_ibw"); %>" disabled>
@@ -2136,7 +2121,7 @@ function set_overhead(entry) {
 																show_up_down(0);
 																document.getElementById('qos_type_tr').style.display = "none";
 																document.getElementById('bandwidth_setting_tr').style.display = "none";
-																document.getElementById('list_table').style.display = "none";								
+																document.getElementById('list_table').style.display = "none";
 																var alert_hint = "";
 																if(GN_with_BandwidthLimeter)
 																	alert_hint += "<#Guest_Network_disable_BWL#>";
@@ -2274,31 +2259,31 @@ function set_overhead(entry) {
 								<div style="width: 120px;height:174px;">
 									<div style="display:flex;height:132px;">
 										<div id="Game" onclick="clickEvent(this);" onmouseover="overHint(86);" onmouseout="nd();"></div>
-									</div>				
+									</div>
 									<div class="Quick_Setup_title"><#AiProtection_filter_stream1#></div>
 								</div>
 								<div style="width: 120px;height:174px;">
 									<div style="display:flex;height:132px;">
 										<div id="Media" onclick="clickEvent(this);" onmouseover="overHint(87);" onmouseout="nd();"></div>
-									</div>		
+									</div>
 									<div class="Quick_Setup_title"><#AiProtection_filter_stream2#></div>
 								</div>
 								<div style="width: 120px;height:174px;">
 									<div style="display:flex;height:132px;">
 										<div id="Web" onclick="clickEvent(this);" onmouseover="overHint(88);" onmouseout="nd();"></div>
-									</div>					
+									</div>
 									<div class="Quick_Setup_title"><#Adaptive_WebSurf#></div>
 								</div>
 								<div style="width: 120px;height:174px;">
 									<div style="display:flex;height:132px;">
 										<div id="eLearning" onclick="clickEvent(this);" onmouseover="overHint(104);" onmouseout="nd();"></div>
-									</div>								
+									</div>
 									<div class="Quick_Setup_title"><#Adaptive_eLearning#></div>
 								</div>
 								<div style="width: 120px;height:174px;">
 									<div style="display:flex;height:132px;">
 										<div id="videoConference" onclick="clickEvent(this);" onmouseover="overHint(103);" onmouseout="nd();"></div>
-									</div>		
+									</div>
 									<div class="Quick_Setup_title"><#Adaptive_Message#></div>
 								</div>
 								<div style="width: 120px;height:174px;">
@@ -2331,7 +2316,7 @@ function set_overhead(entry) {
 					</td>
 				</tr>
 			</table>
-			
+
 		<!--===================================End of Main Content===========================================-->
 		</td>
 	</tr>

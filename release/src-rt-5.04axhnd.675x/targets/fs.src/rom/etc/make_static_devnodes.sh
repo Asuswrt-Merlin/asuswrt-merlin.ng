@@ -13,7 +13,9 @@ mknod /dev/printer0 c 180 0
 # Create Broadcom Proprietary devices. Major numbers must fall in the range 256-512
 mknod /dev/pwrmngt c        300 0
 mknod /dev/bcmfap c         301 0
-mknod /dev/fcache c         302 0
+# SECURITY (TMTS 1099381): restrict to root. Only /bin/fcctl (always run as
+# root; no automatic caller) opens this device; see router-sysdep/pktflow/.
+mknod -m 600 /dev/fcache c 302 0
 mknod /dev/ingqos c         303 0
 mknod /dev/bpm c            304 0
 mknod /dev/bcmarl c         305 0

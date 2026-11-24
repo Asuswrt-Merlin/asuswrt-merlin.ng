@@ -82,7 +82,8 @@ void update_le_st(le_st_t status);
 void update_le_sts(le_sts_t status);
 void update_le_sbsts(le_sbsts_t status);
 void update_le_auxsts(le_auxsts_t status);
-le_conf_t* get_le_conf(le_conf_t* get_le_conf);
+/* Returns conf on success, or NULL for an invalid DDNS hostname. */
+le_conf_t* get_le_conf(le_conf_t* conf);
 int check_le_configure(le_conf_t* conf);
 le_auxsts_t check_le_status(void);
 char* get_path_le_domain_fullchain(char* path, size_t len);

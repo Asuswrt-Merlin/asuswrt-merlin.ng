@@ -1,3 +1,331 @@
+<style>
+@font-face{
+	font-family: Roboto-Regular;
+	src: url(/fonts/Roboto-Regular.ttf) format("opentype");
+}
+/* Match AiMesh's popup_hint_bg and form_style.css button_gen without
+ * loading their global styles into QIS. */
+#amasonboarding_page .amas_outdoor_warning{
+	display: none;
+	position: fixed;
+	top: 100px;
+	left: 50%;
+	transform: translateX(-50%);
+	/* AiMesh uses 65% of its 760px FormTitle content width. */
+	width: 494px;
+	max-width: calc(100% - 76px);
+	height: auto;
+	max-height: calc(100% - 156px);
+	overflow: auto;
+	box-sizing: content-box;
+	padding: 18px;
+	z-index: 1000;
+	background: #1c272c;
+	border: 1px solid #364752;
+	box-shadow: 0 2px 4px 0 rgba(0,0,0,0.20), 0 1px 4px 0 rgba(60,60,60,0.30);
+	border-radius: 4px;
+	font-family: Roboto-Regular, "Microsoft JhengHei";
+	font-size: 16px;
+	/* AiMesh inherits 12px * 180% from FormTitle tbody. */
+	line-height: 21.6px;
+	text-shadow: none;
+	color: #fff;
+	margin-bottom: 30px;
+}
+#amasonboarding_page .amas_outdoor_warning .action_bg{display:flex; justify-content:flex-end; margin-top:18px;}
+#amasonboarding_page .amas_outdoor_warning .button_gen{
+	font-weight: bolder;
+	text-shadow: 1px 1px 0px black;
+	background: #121C1E;
+	background: -webkit-linear-gradient(#233438 0%, #0F1011 100%);
+	background: linear-gradient(#233438 0%, #0F1011 100%);
+	border-radius: 8px;
+	border: 0;
+	color: #FFFFFF;
+	height: 33px;
+	font-family: Verdana, MS UI Gothic, MS P Gothic, Microsoft Yahei UI, sans-serif;
+	font-size: 12px;
+	line-height: normal;
+	padding: 0 .70em;
+	width: auto;
+	min-width: 122px;
+	overflow: visible;
+	cursor: pointer;
+	outline: none;
+	white-space: normal;
+	word-break: break-all;
+	margin-left: 18px;
+}
+#amasonboarding_page .amas_outdoor_warning .button_gen:hover{
+	background: #085F96;
+	background: -webkit-linear-gradient(#09639C 0%, #003047 100%);
+	background: linear-gradient(#09639C 0%, #003047 100%);
+}
+
+#amasonboarding_page .location_info_bg{
+	display: none;
+	font-family: Helvetica, Arial;
+	margin: 20px 0 30px 25px;
+	width: 90%;
+	max-width: 1000px;
+}
+#amasonboarding_page .location_info_bg .location_title{
+	font-size: 1.75em;
+	color: #CCC;
+	margin-bottom: 10px;
+	text-align: left;
+}
+/*the container must be positioned relative:*/
+#amasonboarding_page .custom_select{
+	position: relative;
+	width: 100%;
+	/* the open list overlays the apply/abort footer that follows it */
+	z-index: 100;
+}
+#amasonboarding_page .custom_select select{
+	display: none; /*hide original SELECT element:*/
+}
+#amasonboarding_page .custom_select_selected:focus,
+#amasonboarding_page .custom_select_items .keyboard_active{
+	outline: 2px solid #ffffff;
+	outline-offset: -3px;
+}
+#amasonboarding_page .onboarding_config_error{
+	display: none;
+	color: #FC0;
+	margin: 20px 25px;
+	font-size: 1.5em;
+}
+#amasonboarding_page .custom_select input{
+	position: absolute;
+	box-sizing: border-box;
+	/* left/right rather than the topology width:67% - a fixed percentage spills
+	 * out of the row once a translated location name gets long */
+	top: 50%;
+	margin-top: -22px;
+	left: 66px;
+	right: 50px;
+	width: auto;
+	height: 44px;
+	line-height: 44px;
+	padding: 0;
+	border: 0;
+	outline: none;
+	z-index: 20;
+	color: #ffffff;
+	font-size: 1.75em;
+	font-family: Helvetica, Arial;
+	background: transparent;
+}
+/* iOS/Safari fade disabled inputs out, and this field is the only place the
+ * chosen location is drawn, so it has to stay legible while read-only. Taps
+ * also have to fall through to .custom_select_selected to open the list. */
+#amasonboarding_page .custom_select input:disabled{
+	color: #ffffff;
+	-webkit-text-fill-color: #ffffff;
+	opacity: 1;
+	pointer-events: none;
+}
+#amasonboarding_page .location_info_bg span.location_hint{
+	display: none;
+	color: #FC0;
+	position: relative;
+	margin: 10px 0 0 4px;
+	font-size: 1.5em;
+	line-height: 1.3;
+	z-index: 5;
+	/* a long validation string wraps instead of widening the page */
+	overflow-wrap: break-word;
+	word-wrap: break-word;
+}
+#amasonboarding_page .custom_select_selected{
+	box-sizing: border-box;
+	background-color: rgba(0,0,0,0.4);
+	border: 1px solid rgba(228,235,249,0.10);
+	border-radius: 6px 6px 0px 0px;
+	color: #ffffff;
+	font-size: 1.75em;
+	font-family: Helvetica, Arial;
+	height: 66px;
+	line-height: 44px;
+	padding: 10px 50px 10px 66px;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+	position: relative;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	-webkit-tap-highlight-color: transparent;
+}
+/*style the arrow inside the select element:*/
+#amasonboarding_page .custom_select_selected:after{
+	position: absolute;
+	content: "";
+	top: 50%;
+	margin-top: -11px;
+	right: 22px;
+	width: 10px;
+	height: 10px;
+	border-top: 3px solid #A8AAB7;
+	border-right: 3px solid #A8AAB7;
+	-o-transform: rotate(135deg);
+	-ms-transform: rotate(135deg);
+	-moz-transform: rotate(135deg);
+	-webkit-transform: rotate(135deg);
+	transform: rotate(135deg);
+}
+/*point the arrow upwards when the select box is open (active):*/
+#amasonboarding_page .custom_select_selected.custom_select_arrow_active:after{
+	-o-transform: rotate(-45deg);
+	-ms-transform: rotate(-45deg);
+	-moz-transform: rotate(-45deg);
+	-webkit-transform: rotate(-45deg);
+	transform: rotate(-45deg);
+	margin-top: -5px;
+}
+/*style the items (options):*/
+#amasonboarding_page .custom_select_items div{
+	box-sizing: border-box;
+	color: #ffffff;
+	font-size: 1.75em;
+	height: 66px;
+	line-height: 42px;
+	padding: 12px 50px 12px 66px;
+	border: 1px solid rgba(228,235,249,0.10);
+	border-color: transparent transparent #28333A transparent;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+	position: relative;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	-webkit-tap-highlight-color: transparent;
+}
+#amasonboarding_page .custom_select_items div:before{
+	position: absolute;
+	content: "";
+	top: 50%;
+	margin-top: -20px;
+	left: 18px;
+	width: 40px;
+	height: 40px;
+}
+#amasonboarding_page .custom_select_selected:before{
+	position: absolute;
+	content: "";
+	top: 50%;
+	margin-top: -22px;
+	left: 16px;
+	width: 44px;
+	height: 44px;
+}
+#amasonboarding_page .custom_select_same_as_selected{
+	background-color: #222222;
+	color: #FFF !important;
+}
+#amasonboarding_page .custom_select_same_as_selected:after{
+	position: absolute;
+	content: "";
+	top: 50%;
+	margin-top: -7px;
+	right: 22px;
+	width: 16px;
+	height: 10px;
+	border-top: 3px solid #2EA2F8;
+	border-right: 3px solid #2EA2F8;
+	-o-transform: rotate(135deg);
+	-ms-transform: rotate(135deg);
+	-moz-transform: rotate(135deg);
+	-webkit-transform: rotate(135deg);
+	transform: rotate(135deg);
+}
+/*style items (options):*/
+#amasonboarding_page .custom_select_items{
+	position: absolute;
+	background-color: rgba(0,0,0,0.95);
+	left: 0;
+	right: 0;
+	/* topology pins this at 185px for ~5 desktop rows; the mobile rows are much
+	 * taller, so cap the list instead and let it scroll natively */
+	height: auto;
+	max-height: 420px;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	border-radius: 0px 0px 6px 6px;
+	font-family: Helvetica, Arial;
+}
+/* set by position_list() when there is more room above the row than below it */
+#amasonboarding_page .custom_select_items.custom_select_items_above{
+	top: auto;
+	bottom: 100%;
+	border-radius: 6px 6px 0px 0px;
+}
+#amasonboarding_page .custom_select_items div:hover{
+	background-color: #222222;
+}
+/* touch screens have no hover, so give the rows a pressed state as well */
+#amasonboarding_page .custom_select_items div:active,
+#amasonboarding_page .custom_select_selected:active{
+	background-color: #222222;
+}
+#amasonboarding_page .custom_select_items::-webkit-scrollbar-track{
+	border: 4px solid rgba(20,36,43,0.95);
+	background-color: rgba(54, 67, 87, 0.5);
+}
+#amasonboarding_page .custom_select_items::-webkit-scrollbar{
+	width: 14px;
+}
+#amasonboarding_page .custom_select_items::-webkit-scrollbar-thumb{
+	border-radius: 10px;
+	background-color: #4B596F;
+	border: 2px solid rgba(20,36,43,0.95);
+}
+/*hide the items when the select box is closed:*/
+#amasonboarding_page .custom_select_hide{
+	display: none;
+}
+/* ---- location sprite, same cells as aimesh_topology.css ---- */
+#amasonboarding_page .location_dropdown_icon:before{
+	background-image: url('/images/New_ui/amesh/location_dropdown.svg');
+	background-size: 850%;
+	background-repeat: no-repeat;
+}
+#amasonboarding_page .location_dropdown_icon.selected:before{
+	background-image: url('/images/New_ui/amesh/location_dropdown_active.svg');
+}
+#amasonboarding_page .location_dropdown_icon.Home:before{ background-position: 0% 0%; }
+#amasonboarding_page .location_dropdown_icon.Living_Room:before{ background-position: 0% 20%; }
+#amasonboarding_page .location_dropdown_icon.Dining_Room:before{ background-position: 0% 40%; }
+#amasonboarding_page .location_dropdown_icon.Kitchen:before{ background-position: 0% 60%; }
+#amasonboarding_page .location_dropdown_icon.Bedroom:before{ background-position: 16.5% 0%; }
+#amasonboarding_page .location_dropdown_icon.Master_Bedroom:before{ background-position: 16.5% 20%; }
+#amasonboarding_page .location_dropdown_icon.Kids_Room:before{ background-position: 16.5% 40%; }
+#amasonboarding_page .location_dropdown_icon.Guest_Room:before{ background-position: 16.5% 59%; }
+#amasonboarding_page .location_dropdown_icon.Study_Room:before{ background-position: 16.5% 80%; }
+#amasonboarding_page .location_dropdown_icon.Walk-in_Closet:before{ background-position: 16.5% 100%; }
+#amasonboarding_page .location_dropdown_icon.Bathroom:before{ background-position: 33.5% 0%; }
+#amasonboarding_page .location_dropdown_icon.Office:before{ background-position: 33.5% 20%; }
+#amasonboarding_page .location_dropdown_icon.Meeting_Room:before{ background-position: 33.5% 40%; }
+#amasonboarding_page .location_dropdown_icon.Hallway:before{ background-position: 50% 0%; }
+#amasonboarding_page .location_dropdown_icon.Hall:before{ background-position: 50% 20%; }
+#amasonboarding_page .location_dropdown_icon.Stairwell:before{ background-position: 50% 40%; }
+#amasonboarding_page .location_dropdown_icon.Third_Floor:before{ background-position: 66.5% 0%; }
+#amasonboarding_page .location_dropdown_icon.Second_Floor:before{ background-position: 66.5% 20%; }
+#amasonboarding_page .location_dropdown_icon.Attic:before{ background-position: 66.5% 40%; }
+#amasonboarding_page .location_dropdown_icon.Basement:before{ background-position: 66.5% 59%; }
+#amasonboarding_page .location_dropdown_icon.First_Floor:before{ background-position: 66.5% 79%; }
+#amasonboarding_page .location_dropdown_icon.Storage:before{ background-position: 83.5% 0%; }
+#amasonboarding_page .location_dropdown_icon.Balcony:before{ background-position: 83.5% 20%; }
+#amasonboarding_page .location_dropdown_icon.Yard:before{ background-position: 83.5% 40%; }
+#amasonboarding_page .location_dropdown_icon.Garage:before{ background-position: 83.5% 59%; }
+#amasonboarding_page .location_dropdown_icon.Gym:before{ background-position: 100% 21%; }
+#amasonboarding_page .location_dropdown_icon.Gaming_Room:before{ background-position: 100% 40%; }
+#amasonboarding_page .location_dropdown_icon.Outdoor:before{ background-position: 100% 80%; }
+#amasonboarding_page .location_dropdown_icon.Custom:before{ background-position: 100% 0%; }
+</style>
+
 <div class="headerBar">
 	<table style="width:100%">
 		<tr>
@@ -66,11 +394,25 @@
 			<#WiFi_temp_unavailable#>
 		</div>
 
+		<!-- AiMesh node location, ported from aimesh/aimesh_topology.html.
+		     data-role="none" keeps jQuery Mobile from enhancing the select into a
+		     .ui-select button and the input into a white .ui-input-text box when
+		     pagecreate fires enhanceWithin() on this page. -->
+		<div class="location_info_bg onboarding_unit">
+			<div id="amas_location_title" class="location_title"><#AiMesh_NodeLocation#></div>
+			<div class="custom_select">
+				<select id="sel_location" data-role="none"></select>
+				<input id='input_location' type='text' value='' maxlength='32' autocomplete='off' autocorrect='off' autocapitalize='off' data-role="none" aria-labelledby="amas_location_title" aria-describedby="amas_location_hint">
+			</div>
+			<span id="amas_location_hint" class="location_hint" role="alert"></span>
+		</div>
+		<div class="onboarding_config_error" role="alert"></div>
+
 		<!-- Action Button -->
 		<div id="controlBtn_apply" class="onboarding_unit">
 			<div class="footer_desktop">
 				<div class="desktop_abortBtn" onclick='goTo.amassearch();'><#CTL_search#></div>
-				<div class="desktop_applyBtn" onclick='apply.amasonboarding();'><#CTL_Add_enrollee#></div>
+				<div class="desktop_applyBtn" onclick='apply.amasonboardingWithConfig();'><#CTL_Add_enrollee#></div>
 			</div>
 			<div class="footer_mobile">
 				<table style="width:100%;" cellpadding="0" cellspacing="0">
@@ -78,7 +420,7 @@
 						<td class="mobileAbort" style="width:50%;" onclick='goTo.amassearch();'>
 							<div class="mobile_abortBtn"><#CTL_search#></div>
 						</td>
-						<td class="mobileApply" onclick='apply.amasonboarding();'>
+						<td class="mobileApply" onclick='apply.amasonboardingWithConfig();'>
 							<div class="mobile_applyBtn"><#CTL_Add_enrollee#></div>
 						</td>
 					</tr>
@@ -104,7 +446,519 @@
 				</table>
 			</div>
 		</div>
-		
+
 	</div>
 </div>
+<!-- Keep the popup outside tableContainer's responsive transform. -->
+<div class="amas_outdoor_warning"></div>
 <div class='footerPadding'></div>
+
+<script>
+(function(){
+	var $page = $("#amasonboarding_page");
+	var $bg = $page.find(".location_info_bg");
+	if($bg.length == 0)
+		return;
+
+	var $custom_select = $bg.find(".custom_select");
+	var $sel = $bg.find("#sel_location");
+	var $input = $bg.find("#input_location");
+	var $hint = $bg.find(".location_hint");
+
+	var DEFAULT_LOCATION = "Home";
+	var MAX_LOCATION_LEN = 32;
+
+	/* Last value the user committed. A built-in location keeps its own value here;
+	 * "Custom" keeps whatever text was typed into #input_location. */
+	var current_location = DEFAULT_LOCATION;
+	var location_arr = [];
+	var active_index = 0;
+
+	/* A warning candidate never changes the accepted selector value.
+	 * Confirmation accepts the location; Add sends its mode with the same config. */
+	var pending_location = null;
+	var context = {};
+	var busy = false;
+	var $warning = $page.find(".amas_outdoor_warning");
+	/* Keep accepted drafts outside this .load() fragment. The option code is kept
+	 * separately because a Custom alias may itself be named "Outdoor". */
+	if(!systemVariable.amasLocationDrafts)
+		systemVariable.amasLocationDrafts = {};
+	function node_mac(node){
+		return node && typeof node.mac == "string" ? node.mac.trim().toUpperCase() : "";
+	}
+	function context_valid(){
+		return systemVariable.amasLocationContext === context && context.node === systemVariable.onboardingInfo &&
+			context.mac != "" && context.mac === node_mac(context.node);
+	}
+	function save_location(){
+		if(context_valid())
+			systemVariable.amasLocationDrafts[context.mac] = {value:$sel.val(), location:current_location};
+	}
+	function clear_warning(){
+		pending_location = null;
+		$warning.hide().empty();
+	}
+	function reset_context(){
+		context = {node:systemVariable.onboardingInfo, mac:node_mac(systemVariable.onboardingInfo)};
+		systemVariable.amasLocationContext = context;
+		busy = false;
+		clear_warning();
+	}
+	function select_location(value){
+		if(busy || !context_valid()) return false;
+		clear_warning();
+		var node = systemVariable.onboardingInfo;
+		if(systemVariable.amas_newWindow_addNode === true && isOutdoorLocation(value)){
+			var selection = {node:node, mac:node.mac, context:context, value:value};
+			pending_location = selection;
+			$warning.append(popup_hint_api.get_component_text()).append(popup_hint_api.get_component_action());
+			$warning.find(".hint_text").html(popup_hint_api.get_outdoor_active_text());
+			$warning.find("#action_canacl").on("click", function(e){
+				e.stopPropagation();
+				clear_warning();
+			});
+			$warning.find("#action_ok").on("click", function(e){
+				e.stopPropagation();
+				if(pending_location !== selection) return;
+				clear_warning();
+				if(selection.context != context || !context_valid() || node.mac != selection.mac || !isPage("amasonboarding_page")) return;
+				$input.blur();
+				set_custom_select_value(value);
+			});
+			$warning.show();
+			close_list();
+			return false;
+		}
+		return true;
+	}
+	$page.off("pagehide.amasLocation").on("pagehide.amasLocation", function(){
+		reset_context();
+		clearTimeout(init_timer);
+		close_list();
+	});
+	/* Object identity also invalidates callbacks after the fragment itself reloads. */
+	window.amas_location_select_begin = function(){
+		if(busy || pending_location || !context_valid() || !isPage("amasonboarding_page")) return null;
+		busy = true;
+		return context;
+	};
+	window.amas_location_select_finish = function(token, retry){
+		if(token !== context || !context_valid() || !isPage("amasonboarding_page")) return false;
+		if(retry) busy = false;
+		return true;
+	};
+
+	/* Smallest list that still leaves the control usable, and it is only reached
+	 * if QIS_wizard.htm lost its copy of aimesh_location_arr. Duplicating all 29
+	 * entries here was deliberately avoided - a second full copy would drift away
+	 * from state.js / QIS_wizard.htm without anyone noticing. */
+	var fallback_location_arr = [
+		{value: "Home", text: "<#AiMesh_NodeLocation01#>"},
+		{value: "Custom", text: "<#AiMesh_NodeLocation24#>"}
+	];
+
+	/* This fragment is injected into QIS_wizard.htm with jQuery .load()
+	 * (installPages() in mobile/js/plugins.js, goTo.amasbundle() in handler.js),
+	 * so it shares that window and reads aimesh_location_arr straight off it.
+	 * parent/top are tried too so the fragment keeps working if it is ever hosted
+	 * in an <iframe> the way the aimesh/ pages are; each read is guarded because a
+	 * cross-origin host throws on property access. state.js is deliberately not
+	 * pulled into QIS just for this one array. */
+	function read_location_arr(){
+		var hosts = [window];
+		try{
+			if(window.parent && window.parent !== window)
+				hosts.push(window.parent);
+		}catch(e){}
+		try{
+			if(window.top && window.top !== window && window.top !== window.parent)
+				hosts.push(window.top);
+		}catch(e){}
+
+		for(var i = 0; i < hosts.length; i += 1){
+			try{
+				var arr = hosts[i].aimesh_location_arr;
+				if(Array.isArray(arr) && arr.length > 0)
+					return arr;
+			}
+			catch(e){}	/* cross-origin host, keep looking */
+		}
+		return null;
+	}
+
+	function find_location(_value){
+		return location_arr.filter(function(item){
+			return (item.value == _value);
+		})[0];
+	}
+
+	function css_token(_value){
+		return _value.replace(/\s/g, "_");
+	}
+
+	/* display is set explicitly: .location_hint rests at display:none in the
+	 * stylesheet, and jQuery .show() would restore a <span> to display:inline, which
+	 * silently drops the margin-top that keeps the hint off the select */
+	function show_hint(_hint){
+		$hint.html(_hint).css("display", "block");
+	}
+	function hide_hint(){
+		$hint.css("display", "none").html("");
+	}
+
+	/* The open list is absolutely positioned, so it adds nothing to the document
+	 * height and anything hanging below the fold would be unreachable. Cap it to the
+	 * room actually left under the row - minus the fixed .footer_mobile action bar -
+	 * and flip it above the row when there is more space up there. */
+	function position_list(){
+		var MAX_LIST_H = 420;
+		var MIN_LIST_H = 200;
+		var GAP = 12;
+		var $items = $custom_select.find(".custom_select_items");
+		var $selected = $custom_select.find(".custom_select_selected");
+		if($selected.length == 0)
+			return;
+
+		var row = $selected[0].getBoundingClientRect();
+		var viewport_h = window.innerHeight || $(window).height();
+		var $footer = $page.find(".footer_mobile:visible");
+		var footer_h = ($footer.length > 0) ? $footer.outerHeight() : 0;
+		var below = viewport_h - footer_h - row.bottom - GAP;
+		var above = row.top - GAP;
+		var flip = (below < MIN_LIST_H && above > below);
+		var room = flip ? above : below;
+
+		$items.toggleClass("custom_select_items_above", flip);
+		$items.css("max-height", Math.max(MIN_LIST_H, Math.min(MAX_LIST_H, room)) + "px");
+	}
+
+	function close_list(){
+		$custom_select.find(".custom_select_selected").removeClass("custom_select_arrow_active")
+			.attr("aria-expanded", "false").removeAttr("aria-activedescendant");
+		$custom_select.find(".custom_select_items").addClass("custom_select_hide");
+		$custom_select.find(".keyboard_active").removeClass("keyboard_active");
+	}
+	function activate_option(index){
+		var $items = $custom_select.find(".custom_select_items");
+		var $options = $items.children();
+		if(!$options.length)
+			return;
+		active_index = Math.max(0, Math.min(index, $options.length - 1));
+		var $active = $options.eq(active_index);
+		$options.removeClass("keyboard_active");
+		$active.addClass("keyboard_active");
+		$custom_select.find(".custom_select_selected").attr("aria-activedescendant", $active.attr("id"));
+		var option_rect = $active[0].getBoundingClientRect();
+		var list_rect = $items[0].getBoundingClientRect();
+		if(option_rect.top < list_rect.top)
+			$items.scrollTop($items.scrollTop() + option_rect.top - list_rect.top);
+		else if(option_rect.bottom > list_rect.bottom)
+			$items.scrollTop($items.scrollTop() + option_rect.bottom - list_rect.bottom);
+	}
+	function toggle_list(){
+		var opening = $custom_select.find(".custom_select_items").hasClass("custom_select_hide");
+		if(!opening){
+			close_list();
+			return;
+		}
+		position_list();
+		$custom_select.find(".custom_select_selected").addClass("custom_select_arrow_active").attr("aria-expanded", "true");
+		$custom_select.find(".custom_select_items").removeClass("custom_select_hide");
+		activate_option($sel[0].selectedIndex);
+	}
+
+	/* Reuse the topology location checks and enforce the UTF-8 byte limit on every
+	 * model. QIS does not load state.js, so ask isSupport() directly. */
+	function valid_location(){
+		var location_text = $.trim($input.val());
+		$input.val(location_text);
+
+		if(location_text.length == 0){
+			show_hint("<#JS_fieldblank#>");
+			return false;
+		}
+
+		var block_chars_array = ["\""];
+		for(var i = 0; i < block_chars_array.length; i += 1){
+			if(location_text.indexOf(block_chars_array[i]) >= 0){
+				show_hint(block_chars_array[i] + " <#JS_invalid_chars#>");
+				return false;
+			}
+		}
+
+		if(validator.lengthInUtf8(location_text) > MAX_LOCATION_LEN){
+			show_hint("The field cannot be greater than " + MAX_LOCATION_LEN + " bytes.");/* untranslated */
+			return false;
+		}
+		if(!isSupport("utf8_ssid") && !validator.haveFullWidthChar($input[0])){
+			show_hint("<#JS_validchar#>");
+			return false;
+		}
+
+		hide_hint();
+		return true;
+	}
+
+	/* repaint the closed row, the input and the per-item selected state */
+	function set_custom_select_value(_location){
+		if($input.is(":focus"))
+			return;
+		if(_location == "" || _location == undefined)
+			_location = DEFAULT_LOCATION;
+
+		var location_text = "<#AiMesh_NodeLocation01#>";
+		var location_active = DEFAULT_LOCATION;
+		var specific_location = find_location(_location);
+
+		if(specific_location != undefined){
+			$sel.val(specific_location.value);
+			location_active = css_token(specific_location.value);
+			location_text = specific_location.text;
+		}
+		else{
+			$sel.val("Custom");
+			location_active = "Custom";
+			location_text = _location;
+		}
+		current_location = _location;
+
+		$custom_select.find(".custom_select_selected")
+			.removeClass()
+			.addClass("custom_select_selected location_dropdown_icon selected " + location_active + "")
+			.attr("aria-label", "<#AiMesh_NodeLocation#>: " + location_text);
+
+		$input.attr("title", location_text);
+		$input.val(location_text);
+		$input.attr("disabled", (location_active != "Custom"));
+
+		var $items = $custom_select.find(".custom_select_items");
+		$items.children().removeClass("custom_select_same_as_selected selected").attr("aria-selected", "false");
+		$items.children("[value='" + ((location_active == "Custom") ? "Custom" : specific_location.value) + "']")
+			.addClass("custom_select_same_as_selected selected").attr("aria-selected", "true");
+
+		save_location();
+		hide_hint();
+	}
+
+	function build_custom_select(_location, _option){
+		$custom_select.find(".custom_select_selected").remove();
+		$custom_select.find(".custom_select_items").remove();
+		$sel.find("option").remove();
+		hide_hint();
+
+		for(var i = 0; i < location_arr.length; i += 1){
+			$sel.append($("<option>", {
+				value: location_arr[i].value,
+				text: location_arr[i].text
+			}));
+		}
+
+		var location_text = "<#AiMesh_NodeLocation01#>";
+		var location_active = DEFAULT_LOCATION;
+		var specific_location = (_option == "Custom") ? undefined : find_location(_location);
+		if(specific_location != undefined){
+			$sel.val(specific_location.value);
+			location_active = css_token(specific_location.value);
+			location_text = specific_location.text;
+		}
+		else{
+			$sel.val("Custom");
+			location_active = "Custom";
+			location_text = _location;
+		}
+		current_location = _location;
+
+		$input.off("blur keypress");
+		$input.blur(function(e){
+			e = e || event;
+			e.stopPropagation();
+			if(valid_location()){
+				current_location = $(this).val();
+				save_location();
+			}
+		});
+		$input.keypress(function(e){
+			if(e.keyCode == 13){
+				e = e || event;
+				e.stopPropagation();
+				e.preventDefault();
+				$(this).blur();
+			}
+		});
+
+		$input.val(location_text);
+		$input.attr("title", location_text);
+		$input.attr("disabled", (location_active != "Custom"));
+
+		/* aimesh_topology.html also builds a .custom_pure_text twin and shows that
+		 * one instead for a CAP whose location is read-only. A node being onboarded
+		 * is always editable, so only the interactive row is built here. */
+		var $selected = $("<div>");
+		$selected.addClass("custom_select_selected location_dropdown_icon selected " + location_active + "");
+		$selected.attr({
+			tabindex: "0", role: "combobox", "aria-haspopup": "listbox",
+			"aria-expanded": "false", "aria-controls": "amas_location_options",
+			"aria-label": "<#AiMesh_NodeLocation#>: " + location_text
+		});
+		$selected.appendTo($custom_select);
+		$selected.click(function(e){
+			e = e || event;
+			e.stopPropagation();
+			toggle_list();
+		});
+		$selected.on("keydown", function(e){
+			var key = e.key || ({13:"Enter", 27:"Escape", 32:" ", 35:"End", 36:"Home", 38:"ArrowUp", 40:"ArrowDown", 9:"Tab"})[e.which];
+			var open = !$custom_select.find(".custom_select_items").hasClass("custom_select_hide");
+			if(key == "Tab"){
+				close_list();
+				return;
+			}
+			if(["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape"].indexOf(key) == -1)
+				return;
+			e.preventDefault();
+			e.stopPropagation();
+			if(key == "Escape"){
+				close_list();
+				return;
+			}
+			if(!open)
+				toggle_list();
+			if(key == "Home")
+				activate_option(0);
+			else if(key == "End")
+				activate_option(location_arr.length - 1);
+			else if(open && (key == "ArrowDown" || key == "ArrowUp"))
+				activate_option(active_index + (key == "ArrowDown" ? 1 : -1));
+			else if(open && (key == "Enter" || key == " "))
+				$custom_select.find(".custom_select_items").children().eq(active_index).click();
+		});
+		$selected.on("blur", close_list);
+
+		var $selectListHide = $("<div>");
+		$selectListHide.addClass("custom_select_items custom_select_hide");
+		$selectListHide.attr({id: "amas_location_options", role: "listbox", "aria-labelledby": "amas_location_title"});
+		$selectListHide.appendTo($custom_select);
+
+		location_arr.forEach(function(item, index){
+			var each_location = item;
+			var $selectItem = $("<div>");
+			$selectItem.addClass("location_dropdown_icon " + css_token(each_location.value) + "");
+			$selectItem.attr("value", each_location.value);
+			$selectItem.attr("title", each_location.text);
+			// Keep focus on the combobox until the option click is dispatched.
+			$selectItem.on("mousedown", function(e){ e.preventDefault(); });
+			$selectItem.attr({id: "amas_location_option_" + index, role: "option", "aria-selected": String(_location == each_location.value)});
+			if(_location == each_location.value)
+				$selectItem.addClass("custom_select_same_as_selected selected");
+			$selectItem.html(htmlEnDeCode.htmlEncode(each_location.text));
+
+			$selectItem.click(function(){
+				var selected_value = $(this).attr("value");
+				if(!select_location(selected_value)) return;
+				if(selected_value != "Custom"){
+					$input.blur();
+					$input.attr("disabled", true);
+					set_custom_select_value(selected_value);
+					$selected.focus();
+				}
+				else{
+					/* #sel_location stays the source of truth for the committed value, the
+					 * way it does on the topology page - keep it in step with the row */
+					$sel.val("Custom");
+					current_location = "";
+					$input.attr("disabled", false);
+					$input.val("").attr("title", "");
+					$custom_select.find(".custom_select_selected")
+						.removeClass()
+						.addClass("custom_select_selected location_dropdown_icon selected Custom")
+						.attr("aria-label", "<#AiMesh_NodeLocation#>: " + each_location.text);
+					$custom_select.find(".custom_select_items").children()
+						.removeClass("custom_select_same_as_selected selected").attr("aria-selected", "false");
+					$(this).addClass("custom_select_same_as_selected selected").attr("aria-selected", "true");
+					$input.focus();
+					$input.select();
+					/* mobile browsers and IE drop a focus() issued from inside a tap
+					 * handler, so ask again on the next tick */
+					setTimeout(function(){
+						$input.focus();
+						$input.select();
+					}, 10);
+				}
+				close_list();
+			});
+
+			$selectItem.appendTo($selectListHide);
+		});
+		save_location();
+	}
+
+	/* tapping anywhere else closes the list, the way closeAllSelect() does on the
+	 * topology page. Namespaced and re-bound so a page reload cannot stack handlers. */
+	$(document).off("click.amasLocation").on("click.amasLocation", function(e){
+		if($(e.target).closest("#amasonboarding_page .custom_select").length == 0){
+			close_list();
+			// Match topology closeAllPopup: outside clicks reject a pending choice.
+			if($(e.target).closest("#amasonboarding_page .amas_outdoor_warning").length == 0)
+				clear_warning();
+		}
+	});
+
+	var init_retry = 0;
+	var init_timer = 0;
+	function init(_location){
+		/* drop a retry still pending from an earlier init(), so a late-arriving array
+		 * cannot rebuild the list underneath a selection the user has already made */
+		clearTimeout(init_timer);
+
+		var arr = read_location_arr();
+		if(arr == null){
+			/* QIS_wizard.htm declares the array in <head>, so this only matters if the
+			 * fragment ever loads before its host script has run */
+			if(init_retry < 10){
+				init_retry += 1;
+				init_timer = setTimeout(function(){ init(_location); }, 200);
+				return;
+			}
+			console.log("[amasonboarding] aimesh_location_arr not reachable, using fallback list");
+			arr = fallback_location_arr;
+		}
+		init_retry = 0;
+		location_arr = arr;
+		var draft = context_valid() && systemVariable.amasLocationDrafts[context.mac];
+		if(_location == undefined && draft)
+			build_custom_select(draft.location, draft.value);
+		else
+			build_custom_select((_location == undefined) ? DEFAULT_LOCATION : _location);
+	}
+
+	/* goTo.amasOnboarding() hides every .onboarding_unit and then shows the ones the
+	 * current step needs; this is the hook it calls for the location block. */
+	window.amas_location_select_show = function(_location){
+		reset_context();
+		init(_location);
+		close_list();
+		$bg.show();
+	};
+
+	/* Return a built-in location or validated Custom text; null means validation failed. */
+	window.amas_location_select_is_outdoor = function(){
+		return isOutdoorLocation($sel.val());
+	};
+
+	window.amas_location_select_get = function(){
+		if(pending_location || busy || !context_valid()) return null;
+		if($sel.val() == "Custom"){
+			if(!valid_location())
+				return null;
+			current_location = $.trim($input.val());
+			save_location();
+			return $.trim($input.val());
+		}
+		return current_location;
+	};
+
+	reset_context();
+	init();
+})();
+</script>

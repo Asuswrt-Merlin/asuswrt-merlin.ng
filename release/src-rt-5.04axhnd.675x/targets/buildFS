@@ -35,7 +35,7 @@ cp -av $FSSRC_DIR/* $ROOTFS
 # Update mdev.conf with 'ignore' entries for proprietary drivers
 echo "Updating mdev.conf"
 chmod 0644 $ROOTFS/rom/etc/mdev.conf
-grep /dev $ROOTFS/rom/etc/make_static_devnodes.sh | cut -d' ' -f 2 | cut -d'/' -f 3 | awk '{print $1 " " "0:0 666 !"}' >> $ROOTFS/rom/etc/mdev.conf
+grep /dev $ROOTFS/rom/etc/make_static_devnodes.sh | sed 's/ -m [0-7]*//' | cut -d' ' -f 2 | cut -d'/' -f 3 | awk '{print $1 " " "0:0 666 !"}' >> $ROOTFS/rom/etc/mdev.conf
 
 # Remove all svn metadata files
 find $ROOTFS -name ".svn" -exec rm -rf '{}' \;

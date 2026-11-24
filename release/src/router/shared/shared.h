@@ -78,6 +78,10 @@
 #include "vpn_utils.h"
 #endif
 
+#if defined(RTCONFIG_OOKLA) || defined(RTCONFIG_OOKLA_LITE)
+#include "ookla_common.h"
+#endif
+
 #if defined(RTCONFIG_PTHSAFE_POPEN)
 #if defined(RTCONFIG_QCA)
 #define	popen	PS_popen
@@ -1006,6 +1010,7 @@ extern void set_radio(int on, int unit, int subunit);
 
 extern char *nvram_get_r(const char *name, char *buf, size_t buflen);
 #define nvram_safe_get_r(name, buf, bufsize) (nvram_get_r(name, buf, bufsize) ? : "")
+extern char *nvram_conf_safe_get(const char *name);
 extern char *nvram_pf_get(const char *prefix, const char *name);
 #define nvram_pf_safe_get(prefix, name) (nvram_pf_get(prefix, name) ? : "")
 extern int nvram_pf_set(const char *prefix, const char *name, const char *value);
@@ -3543,6 +3548,7 @@ extern void ipt_account(FILE *fp, char *interface);
 #endif
 extern char *get_productid(void);
 extern char *get_lan_hostname(void);
+extern void refresh_tz_env(void);
 extern void logmessage_normal(char *logheader, char *fmt, ...);
 extern char *get_logfile_path(void);
 extern char *get_syslog_fname(unsigned int idx);
@@ -3821,7 +3827,11 @@ extern int isValidMacAddr_and_isNotMulticast(const char* mac);
 extern int isValidEnableOption(const char* option, int range);
 extern int isValid_digit_string(const char *string);
 extern int is_valid_hostname(const char *name);
+extern int is_valid_ig_client_name(const char *name);
 extern int is_valid_domainname(const char *name);
+extern int is_valid_netbios_name(const char *name);
+extern int is_valid_ifname(const char *name);
+extern int is_valid_filename_token(const char *name);
 extern char *get_ddns_hostname(void);
 extern int get_ispctrl();
 extern unsigned short get_extend_cap();
@@ -5630,4 +5640,5 @@ extern int safe_fork_do_system(const char *fmt, ...);
 extern int safe_do_system_to_file(const char *outfile, int append, const char *fmt, ...);
 
 extern int is_safe_app_name(const char *app_name);
+extern int check_allow_nvram_caller(const char *name);
 #endif	/* !__SHARED_H__ */

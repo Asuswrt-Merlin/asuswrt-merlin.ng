@@ -5696,7 +5696,9 @@ function Get_Component_Full_Setting(view_mode){
 			var sdn_clientlist_data = [];
 			var get_clientlist = httpApi.hookGet("get_clientlist");
 			$.each(get_clientlist, function(index, client){
-				if(client.sdn_idx != undefined && client.sdn_idx == sdn_idx){
+				if(client.sdn_idx != undefined && client.sdn_idx == sdn_idx
+					&& !(client?.amesh_isRe == true || client?.amesh_isRe == "1")
+				){
 					if(client.isOnline == "1"){
 						switch(option_id){
 							case "all":
@@ -7671,7 +7673,9 @@ function Update_Setting_Profile(_obj, _profile_data){
 	var get_clientlist = httpApi.hookGet("get_clientlist");
 	$.each(get_clientlist, function(index, client){
 		if(client.sdn_idx != undefined && client.sdn_idx == _profile_data.sdn_rl.idx){
-			if(client.isOnline == "1"){
+			if(client.isOnline == "1"
+				&& !(client?.amesh_isRe == true || client?.amesh_isRe == "1")
+			){
 				sdn_clientlist_data.push(client);
 			}
 		}
@@ -9978,7 +9982,9 @@ function init_sdn_all_list(){
 		var get_clientlist = httpApi.hookGet("get_clientlist", true);
 		$.each(get_clientlist, function(index, value){
 			if(value.sdn_idx != undefined){
-				if(value.isOnline == "1"){
+				if(value.isOnline == "1"
+					&& !(value?.amesh_isRe == true || value?.amesh_isRe == "1")
+				){
 					var specific_data = sdn_all_rl_json.filter(function(item, index, array){
 						return (item.sdn_rl.idx == value.sdn_idx);
 					})[0];
@@ -12931,3 +12937,4 @@ function checkSubnetConflict(ip1, mask1, ip2, mask2) {
 	return (networkAddress1 & mask2Num) === (networkAddress2 & mask2Num) ||
 		(networkAddress2 & mask1Num) === (networkAddress1 & mask1Num);
 }
+

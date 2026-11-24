@@ -46,7 +46,7 @@ var netoolApi = {
 			});
 	},
 	check: function(fileName){
-		$.get("/netool.cgi", {"type":0, "target": fileName})
+		$.get("/netool.cgi", {"type":0, "target": fileName}, null, "text")
 			.done(function(data){
 				netoolApi.show(data)
 
@@ -210,7 +210,7 @@ function setClientIP(ipaddr){
 									</table>
 
 									<div class="apply_gen" style="height:40px">
-										<input class="button_gen" id="cmdBtn" onClick="onSubmitCtrl(this, ' Refresh ')" type="button" value="<#NetworkTools_Diagnose_btn#>">
+										<input class="button_gen" id="cmdBtn" type="button" value="<#NetworkTools_Diagnose_btn#>">
 										<script>
 											$("#cmdBtn").click(function(){
 												var options = 0;

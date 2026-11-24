@@ -1982,7 +1982,8 @@ var httpApi ={
 					"wpa3_enterprise" : {"bit" : 16},
 					"mlo_bh" : {"bit" : 20},
 					"mlo_fh" : {"bit" : 21},
-					"smart_home_master_ui" : {"bit" : 22}
+					"smart_home_master_ui" : {"bit" : 22},
+					"od_mode" : {"bit" : 29}//OD_MODE_SUPPORT
 				}
 			},
 			"link_aggregation" : {
@@ -2109,6 +2110,138 @@ var httpApi ={
 		}
 		return node_capability_status;
 	},
+	/*
+	 * Outdoor Mode (od_mode) support of the LOCAL router (= the CAP itself).
+	 * Outdoor Mode is a build-time feature of this router, so rc_support is the authority.
+	 * Equivalent to isSupport("od_mode"), but self-contained so that httpApi.js does not
+	 * depend on which isSupport() implementation happens to be loaded by the page.
+	 */
+	"aimesh_is_local_support_od_mode" : function(){
+		var ui_support = httpApi.hookGet("get_ui_support");
+		if(ui_support == undefined || typeof ui_support != "object")
+			return false;
+		return (ui_support["od_mode"] != undefined && ui_support["od_mode"] != 0);
+	},
+	/*
+	 * Outdoor Mode (od_mode) support of ONE AiMesh node (a get_cfg_clientlist entry).
+	 * Do NOT use _node_info.od_mode == "1" for this - that is the node's CURRENT od_mode
+	 * nvram STATE (feature turned on/off), not whether the node is CAPABLE of it.
+	 * 1st) RC_SUPPORT (index 4), when present, is authoritative even if the bit is clear.
+	 * 2nd) Only when index 4 is absent, accept a valid legacy od_mode field (0 or 1).
+	 *      Both states prove support; null/unknown metadata does not.
+	 * Index 36 is AVAILABLE_SDN_INDEX (an SDN string), not an Outdoor Mode capability.
+	 */
+	"aimesh_is_node_support_od_mode" : function(_node_info){
+		if(_node_info == undefined || typeof _node_info != "object")
+			return false;
+
+		var capability = _node_info.capability;
+		if(capability != undefined && typeof capability == "object" && "4" in capability)
+			return (httpApi.aimesh_get_node_capability(_node_info).od_mode === true);
+
+		return (_node_info.od_mode === "0" || _node_info.od_mode === "1" ||
+			_node_info.od_mode === 0 || _node_info.od_mode === 1);
+	},
+	/*
+	 * Outdoor Mode (od_mode) support of the device the UI is configuring, i.e. the CAP.
+	 * od_mode is a PER DEVICE setting - get_cfg_clientlist carries one od_mode per entry
+	 * (0:OFF, 1:ON) and every device is switched on its own - so this is NOT an AND over
+	 * the whole mesh. For an RE node ask httpApi.aimesh_is_node_support_od_mode(node).
+	 *   - CAP: rc_support("od_mode") is the authority; get_cfg_clientlist[0] is only a
+	 *     compatibility fallback for FW that does not export it through rc_support.
+	 *   - standalone and 1..N RE behave identically here, the RE nodes do not veto.
+	 * _cfg_clientlist is optional, pass a list you already fetched to avoid a 2nd query.
+	 */
+	"aimesh_get_od_mode_support" : function(_cfg_clientlist){
+		var node_list = _cfg_clientlist;
+		if(!Array.isArray(node_list))
+			node_list = httpApi.hookGet("get_cfg_clientlist");
+		if(!Array.isArray(node_list))
+			node_list = [];//amas not supported / hook not ready
+
+		var cap_info = node_list[0];//get_cfg_clientlist[0] is always the CAP itself
+		if(httpApi.aimesh_is_local_support_od_mode())
+			return true;
+
+		return httpApi.aimesh_is_node_support_od_mode(cap_info);
+	},
+	/*
+	 * Models certified for Outdoor Mode, in the string space of the local nvram
+	 * odmpid/productid and of a get_cfg_clientlist entry's model_name (the keys of
+	 * js/uiModelName.module.js, where "ZenWiFi_BD4" and "ZenWiFi_BD4_Outdoor" are two
+	 * separate entries). This array is the ONLY home of the list - add a future certified
+	 * outdoor SKU here and every UI gate below follows.
+	 * MODEL is not SUPPORT: rc_support("od_mode") is a build time flag that can be true on
+	 * an indoor sibling sharing the same firmware image, so it must never stand in for this.
+	 */
+	"aimesh_od_model_list" : ["ZenWiFi_BD4_Outdoor"],
+	/*
+	 * Is the LOCAL router (= the CAP the UI runs on) an Outdoor Mode certified model?
+	 * Same rule as system.modelName in js/asus.js - odmpid wins when it is set, productid
+	 * otherwise - restated here because index.asp, AiMesh.asp and aimesh_topology.html load
+	 * js/httpApi.js but not js/asus.js.
+	 * For "does this router SUPPORT od_mode" ask httpApi.aimesh_is_local_support_od_mode().
+	 */
+	"aimesh_is_local_od_model" : function(){
+		//nvramGet always answers with an object, "" for a key this router does not have
+		var nvram_info = httpApi.nvramGet(["odmpid", "productid"]);
+		var model_name = (nvram_info.odmpid == undefined || nvram_info.odmpid == "") ? nvram_info.productid : nvram_info.odmpid;
+		if(model_name == undefined || model_name == "")
+			return false;
+
+		return (httpApi.aimesh_od_model_list.indexOf(model_name) != -1);
+	},
+	/*
+	 * Is ONE AiMesh node (a get_cfg_clientlist entry, index 0 = the CAP included) an
+	 * Outdoor Mode certified model? .model_name is the node's odmpid-or-productid, the same
+	 * key update_node_ui_model_name() looks up - NOT .ui_model_name, that one is localized
+	 * display text, and NOT .product_id, that one is the raw productid an indoor/outdoor
+	 * hardware pair may share.
+	 * For "does this node SUPPORT od_mode" ask httpApi.aimesh_is_node_support_od_mode().
+	 */
+	"aimesh_is_node_od_model" : function(_node_info){
+		if(_node_info == undefined || typeof _node_info != "object")
+			return false;
+
+		var model_name = _node_info.model_name;
+		if(model_name == undefined || model_name == "")
+			return false;
+
+		return (httpApi.aimesh_od_model_list.indexOf(model_name) != -1);
+	},
+	/*
+	 * Is Outdoor Mode (od_mode) currently ACTIVE on ANY device of the topology?
+	 * STATE, not support and not model - for the capability ask
+	 * httpApi.aimesh_get_od_mode_support(), for the hardware SKU aimesh_is_*_od_model().
+	 * od_mode is a PER DEVICE setting and every device is switched on its own, so this is
+	 * an OR over the whole topology, and the authority differs per device:
+	 *   - the CAP (get_cfg_clientlist[0], and a standalone router with no RE at all): its
+	 *     own live nvram. The CAP's list entry echoes that nvram with a lag and would snap
+	 *     the UI back right after a local write, so it is deliberately NOT read here.
+	 *   - RE 1..N: the od_mode each node reports back through its get_cfg_clientlist entry.
+	 * The nvram read is NOT forced on purpose: nvramGet caches for the whole page life and
+	 * a caller that needs a fresh value forces it itself with
+	 * httpApi.nvramGet(["od_mode"], true) right before - one poll tick, one query.
+	 * The cfg_mnt config echo of a just written RE is page side (manage_get_node_config_value
+	 * lives in aimesh_topology.html), so a caller that needs it ORs it on top of this result.
+	 * _cfg_clientlist is optional, pass a list you already fetched to avoid a 2nd query.
+	 * Returns a strict boolean: $().toggle() only treats a boolean as show/hide.
+	 */
+	"aimesh_get_od_mode_active" : function(_cfg_clientlist){
+		//"" (nvram absent or query failed) and undefined both compare false, never use != "0"
+		if(httpApi.nvramGet(["od_mode"]).od_mode == "1")
+			return true;
+
+		var node_list = _cfg_clientlist;
+		if(!Array.isArray(node_list))
+			node_list = httpApi.hookGet("get_cfg_clientlist");
+		if(!Array.isArray(node_list))
+			node_list = [];//amas not supported / hook not ready
+
+		return node_list.slice(1).some(function(item){//index 0 is the CAP, answered above
+			return (item != undefined && item.od_mode == "1");
+		});
+	},
 	"aimesh_get_misc_info" : function(_node_info){
 		var misc_info_type_list = {
 			"cobrand" : {"idx" : 1},
@@ -2144,6 +2277,16 @@ var httpApi ={
 			}
 		}
 		return misc_info_status;
+	},
+	/* QIS candidates use name, while get_onboardinglist uses model_name.
+	 * Use existing per-node capability data; missing data does not prove support. */
+	"aimesh_is_onboarding_support_od_mode" : function(_node_info){
+		if(!_node_info || typeof _node_info != "object")
+			return false;
+		var model = _node_info.name || _node_info.model_name;
+		if(httpApi.aimesh_od_model_list.indexOf(model) == -1)
+			return false;
+		return httpApi.aimesh_is_node_support_od_mode(_node_info);
 	},
 	"aimesh_get_win_open_url" : function(_node_info, _page){
 		var node_capability = httpApi.aimesh_get_node_capability(_node_info);
@@ -2336,6 +2479,7 @@ var httpApi ={
 
 		$.ajax({
 			url: '/chpass.cgi',
+			type: 'POST',
 			dataType: 'json',
 			data: postData,
 			async: false,
@@ -2680,5 +2824,109 @@ var httpApi ={
 
 			return isAvailable;
 		}
+	},
+	"setNewObConfig": function(mac, configObj, callBack, isNewOb){
+		/* Wait for the CAP to acknowledge the staged onboarding configuration. */
+		var finish = function(success, reason){
+			if(typeof callBack === "function")
+				callBack(success, reason);
+		};
+		if(typeof mac != "string" || !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(mac.trim()) ||
+			!configObj || typeof configObj != "object" || Array.isArray(configObj)){
+			finish(false, "invalid_config");
+			return false;
+		}
+		return $.ajax({
+			url: "/applyapp.cgi",
+			type: "POST",
+			dataType: "json",
+			timeout: 30000,
+			data: encodeURIComponent(JSON.stringify({
+				action_mode: isNewOb ? "newob_cfg" : "ob_cfg",
+				re_mac: mac.trim().toUpperCase(),
+				config: JSON.stringify(configObj)
+			})),
+			error: function(xhr, status){
+				finish(false, status == "timeout" ? "timeout" :
+					(status == "parsererror" ? "invalid_response" : "request_failed"));
+			},
+			success: function(response){
+				if(response && response.success === true)
+					finish(true);
+				else
+					finish(false, (response && response.error) || "invalid_response");
+			}
+		});
 	}
+
 }
+
+/* One repeating error must not become a request storm. A ResizeObserver loop, for
+ * example, fires on every frame, and each report costs an httpApi.log XHR plus a
+ * postMessage that the top window (where window.parent === window) delivers straight
+ * back to itself. Report each distinct error at most once every 5 seconds.
+ * Keep both declarations next to the handler: without them every call throws a
+ * ReferenceError on its first line and error reporting dies silently. */
+var jsErrorLastReport = {};
+var JS_ERROR_REPORT_GAP = 5000;
+
+window.onerror = function(message, source, lineno, colno, error) {
+	var errorKey = `${message}|${source}|${lineno}|${colno}`;
+	var errorNow = Date.now();
+	if (jsErrorLastReport[errorKey] && (errorNow - jsErrorLastReport[errorKey]) < JS_ERROR_REPORT_GAP) {
+		return;
+	}
+	/* Drop entries that are past the gap so a message carrying a timestamp or a random
+	 * id cannot grow this map without bound. */
+	Object.keys(jsErrorLastReport).forEach(function (key) {
+		if ((errorNow - jsErrorLastReport[key]) >= JS_ERROR_REPORT_GAP) delete jsErrorLastReport[key];
+	});
+	jsErrorLastReport[errorKey] = errorNow;
+
+	httpApi.log(`JS ERROR`, `
+		Message: ${message} 
+		The error occurred in ${source}, Line: ${lineno}, Column: ${colno}.
+	`);
+
+	if(top.webWrapper){
+        const errorPage = source.includes(location.pathname)
+            ? ""
+            : ` (${location.pathname.replace("/", "")})`;
+
+		window.parent.postMessage({
+			type: "IFRAME_ERROR",
+			message: `${message}${errorPage}`,
+			filename: source,
+			lineno: lineno,
+			colno: colno,
+			error: error
+		}, "*");
+	}
+};
+
+$(document).ready(function() {
+	function interceptFormSubmit(form) {
+		var formData = $(form).serializeArray();
+		var postData = {};
+
+		$.each(formData, function(index, field) {
+			postData[field.name] = field.value;
+		});
+
+		if(top.cachedData && typeof top.cachedData.clear === 'function') {
+			top.cachedData.clear(Object.keys(postData));
+		}
+	}
+
+	$(document).on('submit', 'form', function(event) {
+		interceptFormSubmit(this);
+	});
+
+	if (typeof HTMLFormElement !== 'undefined' && HTMLFormElement.prototype.submit) {
+		var originalSubmit = HTMLFormElement.prototype.submit;
+		HTMLFormElement.prototype.submit = function() {
+			interceptFormSubmit(this);
+			return originalSubmit.apply(this, arguments);
+		};
+	}
+});

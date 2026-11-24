@@ -1063,7 +1063,7 @@ function export_cert(_mode) {
 											<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:15px;">
 												<thead>
 												<tr>
-													<td colspan="2">IKEv1 Config</td><!-- untranslated -->
+													<td colspan="2"><#vpn_IKEv1_setup#></td>
 												</tr>
 												</thead>
 												<tr id="tr_adv_exchange_mode">
@@ -1091,7 +1091,7 @@ function export_cert(_mode) {
 											<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable " style="margin-top:15px;">
 												<thead>
 												<tr>
-													<td colspan="2">IKEv2 Config</td><!-- untranslated -->
+													<td colspan="2"><#vpn_IKEv2_setup#></td>
 												</tr>
 												</thead>
 												<tr>

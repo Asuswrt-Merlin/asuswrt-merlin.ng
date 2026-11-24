@@ -231,7 +231,7 @@ int config_read(char *file) {
     char *buffer;
     int err=0;
     char *value;
-    char *comment;
+    char *rp, *wp;
     char path_buffer[PATH_MAX];
     CONFIGELEMENT *pce;
     int handled;
@@ -285,9 +285,18 @@ int config_read(char *file) {
     while(fgets(buffer,MAX_LINE,fin)) {
 	buffer[MAX_LINE] = '\0';
 
-	comment=strchr(buffer,'#');
-	if(comment)
-	    *comment = '\0';
+	/* strip comments; "\#" and "\\" are escapes for a literal '#' and '\' */
+	for(rp=wp=buffer; *rp; ) {
+	    if((*rp == '\\') && ((rp[1] == '#') || (rp[1] == '\\'))) {
+		*wp++ = rp[1];
+		rp += 2;
+	    } else if(*rp == '#') {
+		break;
+	    } else {
+		*wp++ = *rp++;
+	    }
+	}
+	*wp = '\0';
 
 	while(strlen(buffer) && (strchr("\n\r ",buffer[strlen(buffer)-1])))
 	    buffer[strlen(buffer)-1] = '\0';

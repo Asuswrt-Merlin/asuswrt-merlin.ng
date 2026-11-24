@@ -105,7 +105,12 @@ int upload_server_ovpn_cert_cgi()
 	if (nvram_get_int("upload_server_ovpn_cert_temp")) {
 		if(check_if_file_exist(OPENVPN_UPLOAD_FILE)) {
 			int i, unit;
+			int tar_safe = 1;
+			int stage_fd;
 			char file_path[128];
+			char stage_archive[] = "/tmp/ovpn_verifyXXXXXX";
+			char stage_extract[48] = {0};
+			char stage_list[48] = {0};
 			char *lists[] = {
 				"ca",
 				"ca_key",
@@ -119,21 +124,96 @@ int upload_server_ovpn_cert_cgi()
 				"static",
 				NULL
 			};
-			snprintf(cmd, sizeof(cmd), "tar -xzf %s -C %s", OPENVPN_UPLOAD_FILE, OPENVPN_UPLOAD_FLODER);
-			system(cmd);
 
-			unit = nvram_get_int("vpn_server_unit");
-			for (i = 0; i < ARRAY_SIZE(lists) && lists[i] != NULL; ++i) {
-				memset(file_path, 0, sizeof(file_path));
-				snprintf(file_path, sizeof(file_path), "%s/vpn_crt_server%d_%s", OPENVPN_UPLOAD_FLODER, unit, lists[i]);
-				if(check_if_file_exist(file_path)) {
-					eval("mv", "-f", file_path, JFFS_OPENVPN);
+			/* Security: move the uploaded archive out of the fixed,
+			 * predictable OPENVPN_UPLOAD_FILE path into a private,
+			 * unpredictable staging file before any validation. All
+			 * checks and the extraction below operate only on this
+			 * private copy, so a concurrent authenticated request that
+			 * replaces OPENVPN_UPLOAD_FILE cannot swap the archive
+			 * content between the check and the extraction (TOCTOU). */
+			stage_fd = mkstemp(stage_archive);
+			if (stage_fd >= 0) {
+				close(stage_fd);
+				snprintf(stage_extract, sizeof(stage_extract), "%s_extract", stage_archive);
+				snprintf(stage_list, sizeof(stage_list), "%s_list", stage_archive);
+				doSystem("mkdir -m 0700 %s", stage_extract);
+				if (rename(OPENVPN_UPLOAD_FILE, stage_archive) != 0)
+					tar_safe = 0;
+			} else {
+				tar_safe = 0;
+			}
+
+			/* Security: fail closed if the archive cannot even be listed
+			 * (corrupted/truncated archive), instead of treating a listing
+			 * failure as "no dangerous entry found" */
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "tar tzvf '%s' > '%s' 2>/dev/null", stage_archive, stage_list);
+				if (system(cmd) != 0) {
+					logmessage("httpd", "upload_server_ovpn_cert_cgi: failed to list archive, reject");
+					tar_safe = 0;
 				}
 			}
-			ret = HTTP_OK;
-			notify_rc("restart_openvpnd");
-			notify_rc("restart_chpass");
-			sync_profile_update_time(1); /* 0:nvram 1:openvpn 2:ipsec 3:usericon */
+			/* Security: reject archive containing symlinks or hardlinks */
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "awk '{print $1}' '%s' | grep -qE '^[lh]'", stage_list);
+				if (system(cmd) == 0) {
+					logmessage("httpd", "upload_server_ovpn_cert_cgi: reject archive containing symlink/hardlink entry");
+					tar_safe = 0;
+				}
+			}
+			/* Security: reject archive containing absolute paths or path traversal */
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "grep -qE '^/|\\.\\./' '%s'", stage_list);
+				if (system(cmd) == 0) {
+					logmessage("httpd", "upload_server_ovpn_cert_cgi: reject archive containing unsafe path entry");
+					tar_safe = 0;
+				}
+			}
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "tar -xzf '%s' -C '%s'", stage_archive, stage_extract);
+				if (system(cmd) == 0) {
+					unit = nvram_get_int("vpn_server_unit");
+					/* Security: BusyBox tar lists a hardlink member with a
+					 * regular-file type character, so the "tar tzvf" check
+					 * above cannot catch it. Re-check every whitelisted,
+					 * already extracted file with lstat() and reject the
+					 * whole batch if any of them is a symlink or a hardlink
+					 * (st_nlink > 1), instead of trusting the tar listing
+					 * alone. */
+					for (i = 0; i < ARRAY_SIZE(lists) && lists[i] != NULL && tar_safe; ++i) {
+						struct stat ls;
+						memset(file_path, 0, sizeof(file_path));
+						snprintf(file_path, sizeof(file_path), "%s/vpn_crt_server%d_%s", stage_extract, unit, lists[i]);
+						if (lstat(file_path, &ls) == 0 &&
+						    (S_ISLNK(ls.st_mode) || ls.st_nlink > 1)) {
+							logmessage("httpd", "upload_server_ovpn_cert_cgi: reject extracted symlink/hardlink entry vpn_crt_server%d_%s", unit, lists[i]);
+							tar_safe = 0;
+						}
+					}
+					if (!tar_safe) {
+						logmessage("httpd", "upload_server_ovpn_cert_cgi: post-extraction check failed, reject");
+					} else {
+						for (i = 0; i < ARRAY_SIZE(lists) && lists[i] != NULL; ++i) {
+							memset(file_path, 0, sizeof(file_path));
+							snprintf(file_path, sizeof(file_path), "%s/vpn_crt_server%d_%s", stage_extract, unit, lists[i]);
+							if(check_if_file_exist(file_path)) {
+								eval("mv", "-f", file_path, JFFS_OPENVPN);
+							}
+						}
+						ret = HTTP_OK;
+						notify_rc("restart_openvpnd");
+						notify_rc("restart_chpass");
+						sync_profile_update_time(1); /* 0:nvram 1:openvpn 2:ipsec 3:usericon */
+					}
+				} else {
+					/* Security: fail closed on extraction failure instead of
+					 * silently proceeding with a partial/corrupt cert set */
+					logmessage("httpd", "upload_server_ovpn_cert_cgi: extraction failed, reject");
+				}
+			}
+
+			doSystem("rm -rf %s %s %s", stage_archive, stage_extract, stage_list);
 		}
 	}
 	nvram_unset("upload_server_ovpn_cert_temp");
@@ -222,7 +302,12 @@ int upload_server_ipsec_cert_cgi()
 		char cmd[1024] = {0};
 		if(check_if_file_exist(IPSEC_UPLOAD_FILE)) {
 			int i = 0;
+			int tar_safe = 1;
+			int stage_fd;
 			char file_path[128] = {0};
+			char stage_archive[] = "/tmp/ipsec_verifyXXXXXX";
+			char stage_extract[48] = {0};
+			char stage_list[48] = {0};
 			char *lists[] = {
 				"asusCert.der",
 				"asusCert.pem",
@@ -233,19 +318,70 @@ int upload_server_ipsec_cert_cgi()
 				"svrKey.pem",
 				NULL
 			};
-			snprintf(cmd, sizeof(cmd), "tar -xzf %s -C %s", IPSEC_UPLOAD_FILE, IPSEC_UPLOAD_FLODER);
-			system(cmd);
 
-			for (i = 0; i < ARRAY_SIZE(lists) && lists[i] != NULL; ++i) {
-				memset(file_path, 0, sizeof(file_path));
-				snprintf(file_path, sizeof(file_path), "%s/%s", IPSEC_UPLOAD_FLODER, lists[i]);
-				if(check_if_file_exist(file_path)) {
-					eval("mv", "-f", file_path, JFFS_CA_FILES);
+			/* Security: move the uploaded archive out of the fixed,
+			 * predictable IPSEC_UPLOAD_FILE path into a private,
+			 * unpredictable staging file before any validation, so a
+			 * concurrent authenticated request cannot swap the archive
+			 * content between the check and the extraction (TOCTOU). */
+			stage_fd = mkstemp(stage_archive);
+			if (stage_fd >= 0) {
+				close(stage_fd);
+				snprintf(stage_extract, sizeof(stage_extract), "%s_extract", stage_archive);
+				snprintf(stage_list, sizeof(stage_list), "%s_list", stage_archive);
+				doSystem("mkdir -m 0700 %s", stage_extract);
+				if (rename(IPSEC_UPLOAD_FILE, stage_archive) != 0)
+					tar_safe = 0;
+			} else {
+				tar_safe = 0;
+			}
+
+			/* Security: fail closed if the archive cannot even be listed */
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "tar tzvf '%s' > '%s' 2>/dev/null", stage_archive, stage_list);
+				if (system(cmd) != 0) {
+					logmessage("httpd", "upload_server_ipsec_cert_cgi: failed to list archive, reject");
+					tar_safe = 0;
 				}
 			}
-			ret = HTTP_OK;
-			notify_rc("ipsec_restart");
-			sync_profile_update_time(2);
+			/* Security: reject archive containing symlinks or hardlinks; a
+			 * legitimate IPsec cert archive never has one */
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "awk '{print $1}' '%s' | grep -qE '^[lh]'", stage_list);
+				if (system(cmd) == 0) {
+					logmessage("httpd", "upload_server_ipsec_cert_cgi: reject archive containing symlink/hardlink entry");
+					tar_safe = 0;
+				}
+			}
+			/* Security: reject archive containing absolute paths or path traversal */
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "grep -qE '^/|\\.\\./' '%s'", stage_list);
+				if (system(cmd) == 0) {
+					logmessage("httpd", "upload_server_ipsec_cert_cgi: reject archive containing unsafe path entry");
+					tar_safe = 0;
+				}
+			}
+			if (tar_safe) {
+				snprintf(cmd, sizeof(cmd), "tar -xzf '%s' -C '%s'", stage_archive, stage_extract);
+				if (system(cmd) == 0) {
+					for (i = 0; i < ARRAY_SIZE(lists) && lists[i] != NULL; ++i) {
+						memset(file_path, 0, sizeof(file_path));
+						snprintf(file_path, sizeof(file_path), "%s/%s", stage_extract, lists[i]);
+						if(check_if_file_exist(file_path)) {
+							eval("mv", "-f", file_path, JFFS_CA_FILES);
+						}
+					}
+					ret = HTTP_OK;
+					notify_rc("ipsec_restart");
+					sync_profile_update_time(2);
+				} else {
+					/* Security: fail closed on extraction failure instead of
+					 * silently proceeding with a partial/corrupt cert set */
+					logmessage("httpd", "upload_server_ipsec_cert_cgi: extraction failed, reject");
+				}
+			}
+
+			doSystem("rm -rf %s %s %s", stage_archive, stage_extract, stage_list);
 		}
 	}
 

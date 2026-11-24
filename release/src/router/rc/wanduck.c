@@ -39,6 +39,9 @@ static int wdbg = 0;
 static long last_line_switch_ts = 0;
 static long last_holdoff_log_ts = -1;
 
+#define CLIENT_IDLE_TIMEOUT	30
+static long client_accept_ts[MAX_USER];
+
 
 #if defined(RTCONFIG_WANRED_LED)
 #if defined(RTCONFIG_WANLEDX2)
@@ -687,6 +690,7 @@ int do_ping_detect(int wan_unit, const char *target)
 	if (!is_valid_domainname(target)
 #if defined(RTCONFIG_IPV6) && defined(RTCONFIG_USB_MODEM)
 		&& !(dualwan_unit__usbif(wan_unit) && modem_pdp == 2
+			&& target != NULL
 			&& inet_pton(AF_INET6, target, &pdp_target) == 1)
 #endif
 			)
@@ -1100,7 +1104,7 @@ int op_resolve(char *name, struct addrinfo **res) {
 	hints.ai_socktype = SOCK_RAW;
 
 	if ((err = getaddrinfo(name, NULL, &hints, res)) != 0) {
-		fprintf(stderr, "%s\n", strerror(err));
+		fprintf(stderr, "%s\n", gai_strerror(err));
 		return -1;
 	}
 	return 0;
@@ -2541,9 +2545,6 @@ _dprintf("nat_rule: start_nat_rules 3.\n");
 	}
 }
 
-/* Accept time of each redirect client slot, used to drop idle clients */
-static long client_accept_ts[MAX_USER];
-
 void close_socket(int sockfd, char type){
 	close(sockfd);
 	FD_CLR(sockfd, &allset);
@@ -2718,7 +2719,9 @@ void parse_dst_url(char *page_src){
 	}
 
 	if((hp = strstr(page_src, "Host:")) != NULL){
-		hp += 6;
+		hp += 5;
+		while(*hp == ' ' || *hp == '\t')
+			hp++;
 		j = 0;
 		for(i = 0; i < strlen(hp); ++i){
 			if(i >= (int)sizeof(host)-1)
@@ -5214,10 +5217,10 @@ if(test_log) _dprintf("nat_rule: stop_nat_rules 7.\n");
 				rule_setup = 1;
 
 				handle_wan_line(other_wan_unit, rule_setup);
-				switch_wan_line(other_wan_unit, 0);
 				/* changed_count[] of the primary was used as the fail-back counter,
 				 * start clean or the next DISCONN scan switches straight back. */
-				set_disconn_count(other_wan_unit, S_IDLE);
+				if(switch_wan_line(other_wan_unit, 0))
+					set_disconn_count(other_wan_unit, S_IDLE);
 			}
 			else if(conn_state[other_wan_unit] == PHY_RECONN){
 				_dprintf("\n# wanduck(fail-back): Try to prepare the backup line.\n");
@@ -5286,7 +5289,7 @@ WANDUCK_SELECT:
 		{
 			long sweep_now = uptime();
 			for(fd_i = 0; fd_i <= maxi; ++fd_i){
-				if(client[fd_i].sfd >= 0 && sweep_now - client_accept_ts[fd_i] > 30){
+				if(client[fd_i].sfd >= 0 && sweep_now - client_accept_ts[fd_i] > CLIENT_IDLE_TIMEOUT){
 					FD_CLR(client[fd_i].sfd, &rset);	// already copied from allset
 					close_socket(client[fd_i].sfd, T_HTTP);
 				}

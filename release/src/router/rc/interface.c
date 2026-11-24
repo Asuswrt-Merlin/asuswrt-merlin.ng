@@ -482,7 +482,8 @@ int route_exist(const char *name, int metric, const char *dst, const char *gatew
 			if(!strncmp(buf, "Iface", 5))
 				continue;
 
-			i = sscanf(buf, "%s %x %x %*s %*s %*s %d %x",
+			/* %15s == sizeof(iface) - 1 */
+			i = sscanf(buf, "%15s %x %x %*s %*s %*s %d %x",
 					iface, &rtr_dst, &rtr_gate, &rtr_metric, &rtr_mask);
 			if (i != 4)
 				break;

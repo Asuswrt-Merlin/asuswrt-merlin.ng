@@ -1,3 +1,4 @@
+<script src="/js/aimesh_popup.js"></script>
 <script>
 function _check_is_merlin_fw(_fw) {
         var fw_array = _fw.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)\.([^_]+)_(\w+)/);
@@ -211,6 +212,68 @@ $.getJSON("https://nw-dlcdnet.asus.com/plugin/js/extend_model_icon.json", {_: ne
 );
 var aimesh_node_client_upload_icon = new Array();
 var cloudRouterIconCheckCache = new Array();
+var outdoor_mode_support = false;
+/* get_cfg_clientlist carries each device's od_mode (0:OFF, 1:ON).
+ * RE mode changes also synchronize an outdoor-model CAP via sync_cap_outdoor_mode().
+ * This global is the CAP's own support, it gates the CAP side behaviours (location
+ * handlers). A single device is resolved by manage_get_outdoor_control().
+ * Do NOT test item.od_mode == "1" for support: that is the device's current STATE. */
+function update_outdoor_mode_support(){
+	var cap_info = Array.isArray(aimesh_data.cfg_clientlist) ? aimesh_data.cfg_clientlist[0] : undefined;
+	outdoor_mode_support = (httpApi.aimesh_is_local_support_od_mode() || httpApi.aimesh_is_node_support_od_mode(cap_info));
+	//nvramGet caches for the whole page life. Without this forced re-read an od_mode change
+	//made from another session, another page or the CLI would never reach the CAP switch.
+	httpApi.nvramGet(["od_mode"], true);
+	update_outdoor_notice();
+	update_outdoor_switch_state();
+	return outdoor_mode_support;
+}
+/* The notice applies as soon as ANY device runs in outdoor mode, CAP or RE node.
+ * Call it AFTER httpApi.nvramGet(["od_mode"], true), nvramSet is async by default. */
+function update_outdoor_notice(){
+	//spec: any device in the topology with od_mode=1 -> show the notice at the top.
+	//CAP authority is live nvram; RE authority is manage_get_outdoor_control() (checks config echo first).
+	var cap_active = (httpApi.nvramGet(["od_mode"]).od_mode == "1");
+	var re_active = false;
+	if(Array.isArray(aimesh_data.cfg_clientlist)){
+		re_active = aimesh_data.cfg_clientlist.slice(1).some(function(item){
+			return (manage_get_outdoor_control(item, true).value == 1);
+		});
+	}
+	var od_mode_on = cap_active || re_active;
+	$("#outdoor_notice_container").toggle(od_mode_on);
+}
+/* display_manage_block() early-returns while the selected node is unchanged, so after the
+ * one post-write repaint the panel never re-renders again and a stale od_mode would stick
+ * on screen indefinitely. The periodic refresh therefore corrects the switch itself.
+ * Class only: the click handler stays bound, it reads the current state from the DOM and
+ * only needs the mac, which never changes. */
+function update_outdoor_switch_state(){
+	if(outdoor_save_operations[current_click_mac]){
+		outdoor_save_render();
+		return;
+	}
+	var $row = $("#manage_block").find(".manage_switch_outdoor");
+	if($row.length == 0 || $row.is(":hidden"))
+		return;
+
+	//cap_mac is only assigned further down initial_AiMesh(), after this runs the first time
+	if(cap_mac == undefined || cap_mac == "")
+		return;
+
+	var node_mac = $("#manage_block").attr("data-node_mac");
+	if(node_mac == undefined || node_mac == "" || !Array.isArray(aimesh_data.cfg_clientlist))
+		return;
+
+	var node_info = aimesh_data.cfg_clientlist.filter(function(item){
+		return (item != undefined && item.mac == node_mac);
+	})[0];
+	if(node_info == undefined)
+		return;
+
+	var outdoor_control = manage_get_outdoor_control(node_info, (node_mac != cap_mac));
+	$row.find(".switch").removeClass("on off").addClass((outdoor_control.value == 1) ? "on" : "off");
+}
 function control_category_block(_category){
 	current_click_tab = _category;
 	$(".category_bg").removeClass("clicked");
@@ -227,6 +290,9 @@ function control_category_block(_category){
 			break;
 		case "manage" :
 			display_manage_block();
+			//display_manage_block() early-returns for an unchanged RE, and the poll corrector
+			//bails while the panel is hidden, so refresh the switch on re-entry to the tab.
+			update_outdoor_switch_state();
 			break;
 		case "iperf" :
 			display_iperf_block();
@@ -234,7 +300,238 @@ function control_category_block(_category){
 	}
 }
 
+/* The get_cfg_clientlist entry of the device currently selected in the topology tree. */
+function get_selected_node_info(){
+	if(!Array.isArray(aimesh_data.cfg_clientlist))
+		return undefined;
+	return aimesh_data.cfg_clientlist.filter(function(item){
+		return (item != undefined && item.mac == current_click_mac);
+	})[0];
+}
+/* Keep accepted edits separate from cfg_clientlist (the device/config readback).
+ * A config_changed HTTP response is not an acknowledgement from the RE. */
+var outdoor_save_operations = {};
+var cap_outdoor_sync_pending = false;
+function outdoor_save_render(){
+	var operation = outdoor_save_operations[current_click_mac];
+	var $switch = $("#manage_block .manage_switch_outdoor .switch");
+	$(".primary_info_bg #input_location").prop("disabled", !!operation || $("#sel_location").val() != "Custom");
+	$switch.next(".outdoor_save_loading").remove();
+	$(".location_info_bg .outdoor_save_loading").remove();
+	$switch.show();
+	if(operation){
+		if(operation.data.od_mode !== undefined)
+			$switch.removeClass("on off").addClass(operation.data.od_mode == "1" ? "on" : "off");
+		if(operation.data.cfg_alias !== undefined)
+			set_custom_select_value(operation.data.cfg_alias);
+		$switch.hide().after("<div class='opt_ADS_icon_loading outdoor_save_loading'></div>");
+		$(".location_info_bg").append($("<div>").addClass("outdoor_save_loading").text("<#Main_alert_proceeding_desc1#>"));
+	}
+}
+function outdoor_save_config(node_info, isReNode, data, restore_ui){
+	var mac = node_info.mac;
+	if(outdoor_save_operations[mac])
+		return false;
+	var location_element = $(".primary_info_bg #sel_location")[0];
+	var operation = {data:data};
+	outdoor_save_operations[mac] = operation;
+	var active = function(){return outdoor_save_operations[mac] === operation;};
+	var finish = function(success, readback){
+		if(!active()) return;
+		delete outdoor_save_operations[mac];
+		clearTimeout(operation.deadline);
+		clearTimeout(operation.timer);
+		if(success){
+			if(isReNode && Array.isArray(aimesh_data.cfg_clientlist)){
+				aimesh_data.cfg_clientlist = aimesh_data.cfg_clientlist.map(function(item){
+					return item && item.mac == mac ? readback : item;
+				});
+			}
+			else if(!isReNode){
+				cachedData.clear(Object.keys(data));
+				asyncData.clear(Object.keys(data));
+			}
+		}
+		if((!isReNode && cap_outdoor_sync_pending) || (isReNode && !success && data.od_mode !== undefined))
+			sync_cap_outdoor_mode();
+		if(current_click_mac == mac){
+			var same_view = $(".primary_info_bg #sel_location")[0] === location_element;
+			if(same_view && success && data.cfg_alias !== undefined)
+				set_custom_select_value(data.cfg_alias);
+			if(same_view && !success){
+				if(restore_ui) restore_ui();
+				$(".location_info_bg .location_hint").text("<#ConnectionFailed#>").show();
+			}
+			outdoor_save_render();
+			update_outdoor_mode_support();
+			if(same_view && success) jstree_refresh();
+		}
+	};
+	var read = function(){
+		if(!active()) return;
+		var answered = false;
+		var check = function(values, node){
+			if(answered || !active()) return;
+			answered = true;
+			clearTimeout(operation.timer);
+			var matches = values != undefined;
+			$.each(data, function(key, value){
+				if(!values || values[key] != value) matches = false;
+			});
+			// Config echo confirms CAP acceptance; the top-level field is the RE report.
+			if(isReNode && data.od_mode !== undefined && (!node || node.od_mode != data.od_mode))
+				matches = false;
+			if(matches) finish(true, node);
+			else operation.timer = setTimeout(read, 1000);
+		};
+		// Retry even when a read never answers; its eventual callback is consumed once.
+		operation.timer = setTimeout(function(){
+			if(answered || !active()) return;
+			answered = true;
+			read();
+		}, 5000);
+		if(isReNode){
+			httpApi.hookGetAsync({data:"get_cfg_clientlist", success:function(list){
+				var node = Array.isArray(list) ? list.filter(function(item){return item && item.mac == mac;})[0] : undefined;
+				var values = {};
+				if(node) $.each(data, function(key){values[key] = manage_get_node_config_value(node, key);});
+				check(node ? values : undefined, node);
+			}, error:function(){check();}});
+		}
+		else{
+			httpApi.nvramGetAsync({data:Object.keys(data), success:function(values){
+				check(values);
+			}, error:function(){check();}});
+		}
+	};
+	// Allow the existing one-minute outdoor scan and subsequent node report.
+	operation.deadline = setTimeout(function(){finish(false);}, 120000);
+	if(current_click_mac == mac){
+		$(".location_info_bg .location_hint").hide();
+		outdoor_save_render();
+	}
+	if(isReNode){
+		httpApi.nvramSet({config:JSON.stringify(data), re_mac:mac, action_mode:"config_changed"});
+	}
+	else{
+		var postData = $.extend({action_mode:"apply"}, data);
+		if(data.od_mode !== undefined && httpApi.nvramGet(["od_mode"]).od_mode != data.od_mode)
+			postData.rc_service = "restart_wireless";
+		httpApi.nvramSet(postData);
+	}
+	read();
+	return true;
+}
+/* Write ONE device's od_mode. The CAP writes its own nvram and restarts wireless, an RE node
+ * goes through the AiMesh node config channel and synchronizes the CAP's mode. */
+function set_device_od_mode(_node_info, _isReNode, _od_mode){
+	if(_node_info == undefined || (_od_mode !== "0" && _od_mode !== "1")) return false;
+	var accepted = outdoor_save_config(_node_info, _isReNode, {od_mode:_od_mode});
+	if(accepted && _isReNode)
+		sync_cap_outdoor_mode();
+	return accepted;
+}
+function has_outdoor_re(){
+	if(!Array.isArray(aimesh_data.cfg_clientlist)) return false;
+	return aimesh_data.cfg_clientlist.slice(1).some(function(item){
+		var operation = item && outdoor_save_operations[item.mac];
+		if(operation && operation.data.od_mode !== undefined)
+			return operation.data.od_mode == "1";
+		return manage_get_outdoor_control(item, true).value == 1;
+	});
+}
+/* Merge RE changes while CAP is saving and resolve them using the latest modes. */
+function sync_cap_outdoor_mode(){
+	cap_outdoor_sync_pending = true;
+	if(!Array.isArray(aimesh_data.cfg_clientlist))
+		return;
+
+	var cap_info = aimesh_data.cfg_clientlist[0];
+	if(cap_info == undefined || outdoor_save_operations[cap_info.mac])
+		return;
+	if(!manage_get_outdoor_control(cap_info, false).support){
+		cap_outdoor_sync_pending = false;
+		return;
+	}
+
+	var cap_config = httpApi.nvramGet(["od_mode", "cfg_alias"], true);
+	if(cap_config.isError) return;
+	cap_outdoor_sync_pending = false;
+	var mode = has_outdoor_re() ? "1" : "0";
+	var location = cap_config.cfg_alias || cap_info.alias;
+	if(mode == "0" && popup_hint_api.is_outdoor_location(location)) return;
+	if(cap_config.od_mode != mode)
+		set_device_od_mode(cap_info, false, mode);
+}
+/* Location mode changes retain the original CAP/RE outdoor coupling. */
+var location_outdoor_pending = null;
+function set_location_with_outdoor_mode(value, option, apply_ui, restore_ui){
+	closeAllPopup();
+	var node_info = get_selected_node_info();
+	if(node_info == undefined)
+		return;
+	if(!aimesh_location_arr.some(function(item){return item.value == option;}) || !value)
+		return;
+	var node_mac = node_info.mac;
+	if(outdoor_save_operations[node_mac]) return;
+	var isReNode = (node_mac != cap_mac);
+	var control = manage_get_outdoor_control(node_info, isReNode);
+	var is_od_model = isReNode ? httpApi.aimesh_is_node_od_model(node_info) : httpApi.aimesh_is_local_od_model();
+	var mode = (is_od_model && control.support) ? (popup_hint_api.is_outdoor_location(option) ? "1" : "0") : undefined;
+	var operation = {};
+	var apply = function(){
+		if(current_click_mac != node_mac || outdoor_save_operations[node_mac])
+			return;
+		// A CAP returning indoors stays outdoor while any RE is still outdoor.
+		if(!isReNode && mode == "0" && control.value == 1 && has_outdoor_re())
+			mode = "1";
+		var data = {"cfg_alias": value};
+		if(mode !== undefined) data.od_mode = mode;
+		apply_ui();
+		if(outdoor_save_config(node_info, isReNode, data, restore_ui) && isReNode &&
+			mode !== undefined && mode != control.value)
+			sync_cap_outdoor_mode();
+	};
+	if(mode === undefined || mode == control.value){
+		apply();
+		return;
+	}
+	operation.cancel = function(){
+		if(current_click_mac == node_mac)
+			restore_ui();
+	};
+	location_outdoor_pending = operation;
+	operation.ready = false;
+	setTimeout(function(){
+		if(location_outdoor_pending !== operation)
+			return;
+		if(current_click_mac != node_mac){
+			closeAllPopup();
+			return;
+		}
+		operation.ready = true;
+		$("#aimesh_hint_msg").empty().show()
+			.append(popup_hint_api.get_component_text())
+			.append(popup_hint_api.get_component_action());
+		$("#aimesh_hint_msg .hint_text").html(mode == "1" ? popup_hint_api.get_outdoor_active_text() : popup_hint_api.get_outdoor_inactive_text());
+		$("#aimesh_hint_msg #action_canacl").one("click", function(e){
+			e.stopPropagation();
+			if(location_outdoor_pending === operation)
+				closeAllPopup();
+		});
+		$("#aimesh_hint_msg #action_ok").one("click", function(e){
+			e.stopPropagation();
+			if(location_outdoor_pending !== operation)
+				return;
+			location_outdoor_pending = null;
+			$("#aimesh_hint_msg").hide();
+			apply();
+		});
+		adjust_panel_block_top("aimesh_hint_msg", 100);
+	}, 100);
+}
 function gen_custom_select(_location){
+	closeAllPopup();
 	$(".custom_select .custom_select_selected").remove();
 	$(".custom_select .custom_select_items").remove();
 	$(".custom_select #sel_location").find("option").remove();
@@ -264,10 +561,17 @@ function gen_custom_select(_location){
 	}
 
 	var $inputObj = $(".primary_info_bg .custom_select #input_location");
-	$inputObj.off("blur keypress");
+	var selecting_location = false;
+	$inputObj.off("blur keypress focus");
+	$inputObj.on("focus", function(){
+		$(this).data("editing_mac", current_click_mac);
+	});
 	$inputObj.blur(function(e) {
+		if(outdoor_save_operations[current_click_mac]) return;
 		e = e || event;
 		e.stopPropagation();
+		if(selecting_location || $(this).data("editing_mac") != current_click_mac)
+			return;
 		var validAiMeshLocation = function($obj) {
 			var valid_hint = "";
 			var node_location_text = $.trim($obj.val());
@@ -309,16 +613,13 @@ function gen_custom_select(_location){
 			return true;
 		};
 		if(validAiMeshLocation($(this))) {
-			var isReNode = (current_click_mac != cap_mac) ? true : false;
-			if(isReNode){
-				var data = new Object();
-				data.cfg_alias = $(this).val();
-				manage_set_config(data, current_click_mac);
-			}
-			else
-				set_cap_alias($(this).val());
-
-			set_custom_select_value($(this).val());
+			var value = $(this).val();
+			var previous_location = $inputObj.data("accepted-location");
+			set_location_with_outdoor_mode(value, "Custom", function(){
+				set_custom_select_value(value);
+			}, function(){
+				set_custom_select_value(previous_location);
+			});
 		}
 	});
 	$inputObj.keypress(function(e) {
@@ -330,6 +631,7 @@ function gen_custom_select(_location){
 		}
 	});
 
+	$inputObj.data("accepted-location", _location);
 	$inputObj.val(location_text);
 	$inputObj.attr("title", location_text);
 	if(location_active == "Custom")
@@ -339,6 +641,7 @@ function gen_custom_select(_location){
 
 	var $selected = $("<div>");
 	$selected.addClass("custom_select_selected location_dropdown_icon selected " + location_active + "");
+	$selected.on("mousedown", function(e){ e.preventDefault(); });
 	$selected.appendTo($(".custom_select"));
 	$selected.click(
 		function(e){
@@ -368,66 +671,97 @@ function gen_custom_select(_location){
 		if(_location == each_location.value)
 			$selectItem.addClass("custom_select_same_as_selected selected");
 		$selectItem.html(htmlEnDeCode.htmlEncode(each_location.text));
+		$selectItem.on("mousedown", function(e){ e.preventDefault(); });
 
 		$selectItem.click(
-			function(){
-				if($(this).attr("value") != "Custom"){
-					$inputObj.attr("disabled", true);
-					set_custom_select_value($(this).attr("value"));
-					if(current_click_mac != ""){
-						var isReNode = (current_click_mac != cap_mac) ? true : false;
-						if(isReNode){
-							var data = new Object();
-							data.cfg_alias = $(this).attr("value");
-							manage_set_config(data, current_click_mac);
+			function(e){
+				e.stopPropagation();
+				if(outdoor_save_operations[current_click_mac]) return;
+				var selected_value = $(this).attr("value");
+				// Choosing an option discards a Custom draft instead of saving it on blur.
+				selecting_location = true;
+				$inputObj.blur();
+				selecting_location = false;
+				var previous_location = $inputObj.data("accepted-location");
+				// UI-only: update dropdown/input without writing to backend
+				var apply_location_ui = function(){
+					if(selected_value != "Custom"){
+						$inputObj.attr("disabled", true);
+						set_custom_select_value(selected_value);
+					}
+					else{
+						$(".primary_info_bg #sel_location").val("Custom");
+						$selected.removeClass().addClass("custom_select_selected location_dropdown_icon selected Custom");
+						$inputObj.attr("disabled", false);
+						$inputObj.focus();
+						$inputObj.select();
+						$inputObj.val("");
+						if(getBrowser_info().ie != undefined || getBrowser_info().ie != null){
+							setTimeout(function () {
+								$inputObj.focus();
+								$inputObj.select();
+							}, 10);
 						}
-						else
-							set_cap_alias($(this).attr("value"));
 					}
+					$selected.click();
+				};
+				if(selected_value == "Custom"){
+					apply_location_ui();
+					return;
 				}
-				else{
-					$inputObj.attr("disabled", false);
-					$inputObj.focus();
-					$inputObj.select();
-					$inputObj.val("");
-					if(getBrowser_info().ie != undefined || getBrowser_info().ie != null){
-						setTimeout(function () {
-							$inputObj.focus();
-							$inputObj.select();
-						}, 10);
-					}
-				}
-
-				$selected.click();
+				closeAllSelect();
+				set_location_with_outdoor_mode(selected_value, selected_value, function(){
+					apply_location_ui();
+				}, function(){
+					set_custom_select_value(previous_location);
+				});
 			}
 		);
 		
 		$selectItem.appendTo($selectListHide);
 	});
+	outdoor_save_render();
 }
 function closeAllSelect(e) {
 	$(".primary_info_bg").find(".custom_select_selected").removeClass("custom_select_arrow_active");
 	$(".primary_info_bg").find(".custom_select_items").addClass("custom_select_hide");
 }
+function cancel_location_outdoor_change(){
+	var operation = location_outdoor_pending;
+	location_outdoor_pending = null;
+	if(operation)
+		operation.cancel();
+}
 function closeAllPopup(e) {
 	if($(e).length > 0){
 		if($(e.target).closest(".popup_hint_bg").length == 0){
+			// A Custom input's blur can precede the click that opened this warning.
+			if(location_outdoor_pending && !location_outdoor_pending.ready)
+				return;
+			cancel_location_outdoor_change();
 			$("#aimesh_hint_msg").hide();
 			clearTimeout(client_reconnect_timeout);
 			clearTimeout(client_bind_timeout);
 		}
 	}
 	else{
+		cancel_location_outdoor_change();
 		$("#aimesh_hint_msg").hide();
 		clearTimeout(client_reconnect_timeout);
 		clearTimeout(client_bind_timeout);
 	}
 }
 function set_custom_select_value(_location){
-	if($(".primary_info_bg .custom_select #input_location").is(":focus"))
+	var operation = outdoor_save_operations[current_click_mac];
+	if(operation && operation.data.cfg_alias !== undefined)
+		_location = operation.data.cfg_alias;
+	var $input = $(".primary_info_bg .custom_select #input_location");
+	if($input.is(":focus") && $input.data("location_mac") == current_click_mac)
 		return;
+	$input.data("location_mac", current_click_mac);
 	if(_location == "" || _location == undefined)
 		_location = "Home";
+	$(".primary_info_bg #input_location").data("accepted-location", _location);
 	var location_text = "<#AiMesh_NodeLocation01#>";
 	var location_active = "Home";
 
@@ -472,6 +806,8 @@ function display_client_block(){
 function client_get_client_date(){
 	aimesh_data.cfg_clientlist = httpApi.hookGet("get_cfg_clientlist", true);
 	update_node_ui_model_name(aimesh_data.cfg_clientlist);
+	update_outdoor_mode_support();//a node joining/leaving changes od_mode support
+	if(cap_outdoor_sync_pending) sync_cap_outdoor_mode();
 	originData.fromNetworkmapd[0] = httpApi.hookGet("get_clientlist", true);
 	originData.nmpClient[0] = httpApi.hookGet("get_clientlist_from_json_database", true);
 	genClientList();
@@ -2733,6 +3069,9 @@ function display_manage_block(){
 
 				remove_node_control();
 
+				// RE mode changes also synchronize an outdoor-model CAP.
+				manage_bind_outdoor_switch(specific_node_data, true, manage_get_outdoor_control(specific_node_data, true));
+
 				var led_control = manage_get_led_control(specific_node_data, select_node_capability);
 				$("#manage_block").find(".manage_switch_led").hide();
 				$("#manage_block").find(".manage_slider_led").hide();
@@ -3151,10 +3490,112 @@ function display_manage_block(){
 					}
 				}
 			}
+
+			//OUTDOOR MODE - the CAP writes its own nvram; an RE node has its own switch above
+			manage_bind_outdoor_switch(specific_node_data, false, manage_get_outdoor_control(specific_node_data, false));
 		}
 	}
 	else
 		$("#manage_block").hide();
+}
+/* Look a flat nvram key up inside _node_info.config. cfg_mnt decides which group it files
+ * a key under (central_led, ctrl_led, backhalctrl, misc, ...), so search instead of
+ * hardcoding the group. Returns undefined when the key is not echoed back at all. */
+function manage_get_node_config_value(_node_info, _key){
+	if(_node_info == undefined || typeof _node_info != "object" || !("config" in _node_info))
+		return undefined;
+	if(_node_info.config == undefined || typeof _node_info.config != "object")
+		return undefined;
+	if(_key in _node_info.config)//stored flat, not nested in a group
+		return _node_info.config[_key];
+
+	var value = undefined;
+	$.each(_node_info.config, function(group, group_data){
+		if(group_data != undefined && typeof group_data == "object" && (_key in group_data)){
+			value = group_data[_key];
+			return false;
+		}
+	});
+	return value;
+}
+/* Outdoor Mode(od_mode) state + support of ONE device.
+ * get_cfg_clientlist reports each device's od_mode (0:OFF 1:ON).
+ *   CAP : read its own nvram, it is force refreshed straight after a set
+ *   RE  : config echo first, node reported od_mode as the fallback (see below) */
+function manage_get_outdoor_control(_node_info, _isReNode){
+	var result = {"support": false, "value": 0};
+	if(_node_info == undefined)
+		return result;
+
+	if(_isReNode){
+		// A capability bit alone does not make config_changed accept od_mode.
+		// Only expose this control when the RE's editable config contains the key.
+		result.support = httpApi.aimesh_is_node_od_model(_node_info) &&
+			httpApi.aimesh_is_node_support_od_mode(_node_info) &&
+			manage_get_node_config_value(_node_info, "od_mode") != undefined;
+		/* Read the CAP side config echo FIRST. manage_set_config() writes od_mode into the
+		 * cfg_mnt config DB, which is echoed back straight away, while the top level od_mode
+		 * is the NODE reported status and only catches up once cfg_mnt has pushed the config
+		 * and the node applied it - seconds later. Without this the 1s post write repaint
+		 * snaps the switch back to the old value and it looks like the change was rejected.
+		 * Every other RE control here reads config.<group>.<key> for exactly this reason. */
+		var od_mode = manage_get_node_config_value(_node_info, "od_mode");
+		if(od_mode == undefined)
+			od_mode = _node_info.od_mode;//FW that does not echo it into the config DB
+		result.value = (od_mode == "1") ? 1 : 0;
+	}
+	else{
+		result.support = httpApi.aimesh_is_local_od_model() &&
+			(httpApi.aimesh_is_local_support_od_mode() || httpApi.aimesh_is_node_support_od_mode(_node_info));
+		result.value = (httpApi.nvramGet(["od_mode"]).od_mode == "1") ? 1 : 0;
+	}
+	return result;
+}
+/* Render + bind the Outdoor Mode switch of the device currently selected in the tree.
+ * The CAP writes its own nvram and restarts wireless, an RE node goes through the AiMesh
+ * node config channel (action_mode config_changed), then synchronizes CAP mode. */
+function manage_bind_outdoor_switch(_node_info, _isReNode, _outdoor_control){
+	$("#manage_block").attr("data-node_mac", _node_info.mac);
+	if(!_outdoor_control.support){
+		$("#manage_block").find(".manage_switch_outdoor").hide();
+		return;
+	}
+
+	var $switch_obj = $("#manage_block").find(".manage_switch_outdoor .switch");
+	$switch_obj.removeClass().addClass("switch").addClass((_outdoor_control.value == 1) ? "on" : "off");
+	$switch_obj.unbind("click").click(function(e){
+		closeAllPopup();
+		e = e || event;
+		e.stopPropagation();
+		if(current_click_mac != _node_info.mac || outdoor_save_operations[_node_info.mac]) return;
+		var $switch = $(this);
+		var new_od_mode = $switch.hasClass("on") ? "0" : "1";
+		var operation = {ready:true, cancel:function(){}};
+		location_outdoor_pending = operation;
+		$("#aimesh_hint_msg").empty().show()
+			.append(popup_hint_api.get_component_text())
+			.append(popup_hint_api.get_component_action());
+		var hint_text = (new_od_mode == "1") ? popup_hint_api.get_outdoor_active_text() : popup_hint_api.get_outdoor_inactive_text();
+		$("#aimesh_hint_msg .hint_text").html(hint_text);
+		$("#aimesh_hint_msg #action_canacl").show().unbind("click").click(function(e){
+			e = e || event;
+			e.stopPropagation();
+			if(location_outdoor_pending === operation) closeAllPopup();
+		});
+		$("#aimesh_hint_msg #action_ok").show().unbind("click").one("click", function(e){
+			e = e || event;
+			e.stopPropagation();
+			if(location_outdoor_pending !== operation) return;
+			location_outdoor_pending = null;
+			$("#aimesh_hint_msg").hide();
+			if(current_click_mac != _node_info.mac)
+				return;
+			set_device_od_mode(_node_info, _isReNode, new_od_mode);
+		});
+		adjust_panel_block_top("aimesh_hint_msg", 100);
+	});
+	$("#manage_block").find(".manage_switch_outdoor").show();
+	outdoor_save_render();
 }
 function manage_get_led_control(_node_info, _node_capability){
 	const isReNode = (current_click_mac != cap_mac) ? true : false;
@@ -3568,6 +4009,9 @@ function manage_get_lacp(_node_info, _node_capability){
 	return result;
 }
 function manage_set_config(_data, _nodeMac) {
+	/* Detach the poll corrector BEFORE the write, not in the callback: while the write is in
+	 * flight the 10s tick must not repaint the switch from a not-yet-updated config echo. */
+	$("#manage_block").removeAttr("data-node_mac");
 	httpApi.nvramSet({
 		"config" : JSON.stringify(_data),
 		"re_mac" : _nodeMac,
@@ -3576,7 +4020,7 @@ function manage_set_config(_data, _nodeMac) {
 		setTimeout(function(){
 			jstree_refresh();
 		},1000);
-	}());
+	});
 }
 function manage_get_preferable_backhaul(_node_info){
 	var result = {"text": "<#Auto#>", "pref_mac": "", "pref_node_exist":false};
@@ -3731,10 +4175,8 @@ function manage_set_preferable_backhaul(_node_info, _pref_info){
 				"re_mac" : current_node_mac,
 				"action_mode": "prefer_node_apply"
 			}, function(){
-				setTimeout(function(){
-					jstree_refresh();
-				},1000);
-			}());
+				setTimeout(jstree_refresh, 1000);
+			});
 		}
 		else{
 			var data = new Object();
@@ -4021,7 +4463,7 @@ function set_change_model_icon(_node_info){
 				setTimeout(function(){
 					jstree_refresh();
 				},1000);
-			}());
+			});
 		});
 	}
 	else{
@@ -4084,10 +4526,13 @@ function set_cap_alias(_alias) {
 		"cfg_alias" : _alias,
 		"action_mode": "apply"
 	}, function(){
+		// Read the current location on the next outdoor-mode check after a successful write.
+		cachedData.clear(["cfg_alias"]);
+		asyncData.clear(["cfg_alias"]);
 		setTimeout(function(){
 			jstree_refresh();
 		},1000);
-	}());
+	});
 }
 function get_topology_data(){
 	var treeTopology = [];
@@ -4154,7 +4599,9 @@ function change_node(_node_info){
 	var hide_manage = true;
 	var hide_iperf = !isSupport("cd_iperf");
 
-	if(isReNode || isSupport("led_ctrl_cap"))
+	//outdoor_mode_support is the CAP's own support: without it the Management tab, and with
+	//it the Outdoor Mode switch, is unreachable on a CAP that has no led_ctrl_cap.
+	if(isReNode || isSupport("led_ctrl_cap") || outdoor_mode_support)
 		hide_manage = false;
 
 	if(hide_manage && hide_iperf){
@@ -4260,7 +4707,13 @@ var interval_tree_update_time = 1000*10;
 var interval_tree_update_count = 0;
 var interval_tree_update_maxi = 150;
 var current_click_mac = "";
-var current_click_tab = "client";
+/* Deep link: /AiMesh.asp?current_tab=manage (the Network Map Outdoor Mode status jumps
+ * here) lands on that tab of the initially selected CAP instead of the default Clients
+ * tab. change_node() already falls back to "client" when the tab is hidden for the node. */
+var current_click_tab = (function(){
+	var tab = new URLSearchParams(window.location.search).get("current_tab");
+	return (["client", "network", "manage", "iperf"].indexOf(tab) >= 0) ? tab : "client";
+})();
 var current_client_click_type = "all";
 var cap_mac = "";
 var select_node_capability = {};
@@ -4337,6 +4790,10 @@ function initial_AiMesh(){
 	clearInterval(interval_tree_update);
 	aimesh_data.cfg_clientlist = httpApi.hookGet("get_cfg_clientlist");
 	update_node_ui_model_name(aimesh_data.cfg_clientlist);
+	/* Resolve Outdoor Mode(od_mode) support right after cfg_clientlist is fetched. It used
+	 * to be assigned ~370 lines further down, so every reader above it - including the
+	 * notice banner - saw the line-207 initialiser false on the first page load. */
+	update_outdoor_mode_support();//also paints #outdoor_notice_container
 	var cap_obj = aimesh_data.cfg_clientlist[0];//cap
 	if(cap_obj != undefined){
 		gen_custom_select("Home");
@@ -4350,6 +4807,23 @@ function initial_AiMesh(){
 	}
 	else
 		$(".aimesh_bg").hide();
+
+	/* Deep link landing (AiMesh.asp?current_tab=manage): the Management panel is per device,
+	 * so select the device that actually runs in outdoor mode. Without this, an outdoor RE
+	 * under a CAP that has no Management tab bounces the deep link back to the CAP's Clients
+	 * tab (change_node() resets a hidden tab to "client"), and even a Management-capable CAP
+	 * would show its own switch instead of the outdoor RE's. */
+	if(current_click_tab == "manage" && Array.isArray(aimesh_data.cfg_clientlist)){
+		var outdoor_node = aimesh_data.cfg_clientlist.filter(function(item, index){
+			if(item == undefined || !httpApi.aimesh_is_node_od_model(item))
+				return false;
+			if(index == 0)//the CAP: live nvram, forced re-read by update_outdoor_mode_support() above
+				return (httpApi.nvramGet(["od_mode"]).od_mode == "1");
+			return (item.od_mode == "1" || manage_get_outdoor_control(item, true).value == 1);
+		})[0];
+		if(outdoor_node != undefined)
+			current_click_mac = outdoor_node.mac;
+	}
 
 	$("body").unbind("click");
 	$("body").click(function() {
@@ -4579,6 +5053,8 @@ function initial_AiMesh(){
 	});
 	$('#jstree').on("select_node.jstree", function (e, data) {		
 		var node_mac = data.node.id.replace("topo_", "").replace(/-/g, ':');
+		if(node_mac != current_click_mac)
+			closeAllPopup();
 		current_click_mac = node_mac;
 		var specific_node_data = aimesh_data.cfg_clientlist.filter(function(item, index, _array){
 			return (item.mac == current_click_mac);
@@ -4968,34 +5444,6 @@ function handle_re_path(_re_path){
 	var result = parseInt(_re_path);
 	return ((isNaN(result)) ? 0 : result);
 }
-var popup_hint_api = {
-	"get_component_title": function(){
-		return $("<div>").addClass("hint_title");
-	},
-	"get_component_text": function(){
-		return $("<div>").addClass("hint_text");
-	},
-	"get_component_action": function(){
-		var $action_bg = $("<div>").addClass("action_bg");
-		var $action_canacl = $("<input/>").attr({"id":"action_canacl", "type":"button", "value":"<#CTL_Cancel#>"}).addClass("button_gen");
-		var $action_ok = $("<input/>").attr({"id":"action_ok", "type":"button", "value":"<#CTL_ok#>"}).addClass("button_gen");
-		$action_bg.append($action_canacl).append($action_ok);
-		return $action_bg;
-	},
-	"get_component_loading": function(){
-		var loadContainer = $("<div>").addClass("cssload-bell");
-		for(var i=0; i<5; i++){
-			$("<div>")
-				.addClass("cssload-circle")
-				.append($("<div>").addClass("cssload-inner"))
-				.appendTo(loadContainer);
-		}
-		return $("<div>").addClass("cssload-bellContainer").append(loadContainer);
-	},
-	"get_component_mask": function(){
-		return $("<div>").addClass("mask_bg");
-	}
-};
 
 var iperf_data = {};
 function display_iperf_block(){
@@ -5219,6 +5667,15 @@ $(document).ready(initial_AiMesh);
 			<div id="opt_ADS_status_text" class="status_text"></div>
 		</div>
 	</div>
+	<div id="outdoor_notice_container" class="outdoor_notice_container" style="display:none">
+		<div class="icon_container">
+			<img src="/images/New_ui/exclamationmark.svg" width="24" height="24">
+		</div>
+		<div class="text_container">
+			<#Outdoor_status_hint#>
+		</div>
+	</div>
+
 	<div id="jstree"></div>
 	<div class="connect_info_bg">
 		<div class="faq_info_icon"></div>
@@ -5445,6 +5902,12 @@ $(document).ready(initial_AiMesh);
 			<div class="card_block_bg manage_settings_bg manage">
 				<div class="manage_title">
 					<span class="connect_title horizontal_line"><#AiMesh_Management#></span>
+				</div>
+				<div class="manage_switch_outdoor horizontal_line manage_function_item">
+					<div class="manage_common_title manage_common_separate_bg left"><#Outdoor_mode#></div>
+					<div class="manage_common_separate_bg right">
+						<div class="switch"></div>
+					</div>
 				</div>
 				<div class="manage_disconnected"><#AiMesh_Features_Disabled_When_Offline#></div>
 				<div class="manage_switch_led horizontal_line manage_function_item">

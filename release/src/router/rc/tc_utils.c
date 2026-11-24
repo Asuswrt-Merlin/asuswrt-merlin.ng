@@ -69,35 +69,48 @@ int check_process_exist(char *pid_file){
 		return 1;
 }
 
+static void md5_to_hex(const unsigned char *digest, char *out){
+	int i;
+	for(i = 0; i < MD5_DIGEST_LENGTH; i++)
+		sprintf(out + i * 2, "%02x", digest[i]);
+	out[MD5_DIGEST_LENGTH * 2] = '\0';
+}
+
+/* No shell involved: filePath is derived from tencent_download_path (nvram) */
 int check_md5_match(char *filePath, int filePath_len, char *md5str){
 	int md5match = 1;
-	char *buf = NULL;
 	FILE *fp = NULL;
-	int len = 0, line_len = 0;
+	MD5_CTX ctx;
+	unsigned char digest[MD5_DIGEST_LENGTH], rbuf[4096];
+	char hex[MD5_DIGEST_LENGTH * 2 + 1];
+	size_t n;
+	int read_err;
 
 	if(md5str != NULL){
-		len = filePath_len + 20;
-		buf = malloc(len);
-		if(buf){
-			snprintf(buf, len, "md5sum %s | cut -b-32", filePath);
-			TENCENT_DBG("execute md5sum: buf = %s\n", buf);
-			fp = popen(buf, "r");
-			if(fp){
-				memset(buf, 0, len);
-				line_len = fread(buf, 1, len, fp);
-				pclose(fp);
-				buf[line_len-1] = '\0';
-				TENCENT_DBG("md5str of downloaded file = %s\n", buf);
-				if(strcasecmp(md5str, buf)){
+		fp = fopen(filePath, "rb");
+		if(fp){
+			MD5_Init(&ctx);
+			while((n = fread(rbuf, 1, sizeof(rbuf), fp)) > 0)
+				MD5_Update(&ctx, rbuf, n);
+			read_err = ferror(fp);	/* fread() == 0 may be a read error, not EOF */
+			fclose(fp);
+			if(read_err){
+				TENCENT_DBG("Read error while calculating md5 of %s\n", filePath);
+				md5match = 0;
+			}
+			else{
+				MD5_Final(digest, &ctx);
+				md5_to_hex(digest, hex);
+				TENCENT_DBG("md5str of downloaded file = %s\n", hex);
+				if(strcasecmp(md5str, hex)){
 					TENCENT_DBG("md5 mismatch\n");
 					md5match = 0;
 				}
 			}
-			else{
-				TENCENT_DBG("Fail to calculate md5 of downloaded file %s\n", filePath);
-				md5match = 0;
-			}
-			free(buf);
+		}
+		else{
+			TENCENT_DBG("Fail to calculate md5 of downloaded file %s\n", filePath);
+			md5match = 0;
 		}
 	}
 	else
@@ -106,28 +119,14 @@ int check_md5_match(char *filePath, int filePath_len, char *md5str){
 	return md5match;
 }
 
+/* No shell involved: str comes from the (remote) session file */
 int str_to_md5(char *str, int str_len, char *md5buf, int buf_len){
-	char *buf = NULL;
-	FILE *fp = NULL;
-	int len = 0, line_len = 0;
+	unsigned char digest[MD5_DIGEST_LENGTH];
+	char hex[MD5_DIGEST_LENGTH * 2 + 1];
 
-	len = str_len + 30;
-	buf = malloc(len);
-	if(buf){
-		snprintf(buf, len, "echo -n %s | md5sum | cut -b-32", str);
-		fp = popen(buf, "r");
-		if(fp){
-			memset(buf, 0, len);
-			line_len = fread(buf, 1, len, fp);
-			pclose(fp);
-			buf[line_len-1] = '\0';
-			snprintf(md5buf, buf_len, "%s", buf);
-		}
-		else{
-			dbg("Fail to calculate md5 of string %s\n", str);
-		}
-		free(buf);
-	}
+	MD5((const unsigned char *)str, str_len, digest);
+	md5_to_hex(digest, hex);
+	snprintf(md5buf, buf_len, "%s", hex);
 
 	return 0;
 }

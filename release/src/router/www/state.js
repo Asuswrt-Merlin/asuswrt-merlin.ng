@@ -342,6 +342,7 @@ var is_CH_sku = in_territory_code("CH");
 var is_SG_sku = in_territory_code("SG");
 var is_EU_sku = in_territory_code("EU");
 var SG_mode = ('<% nvram_get("SG_mode"); %>' == 1);
+var ID_mode = ('<% nvram_get("ID_mode"); %>' == 1);
 
 var isGundam = in_territory_code("GD") || CoBrand_flag == 1;
 var isKimetsu = (CoBrand_flag == '2');
@@ -1088,7 +1089,7 @@ var aimesh_location_arr = [
 	{value:"First Floor",text:"<#AiMesh_NodeLocation26#>"}, {value:"Second Floor",text:"<#AiMesh_NodeLocation19#>"}, {value:"Third Floor",text:"<#AiMesh_NodeLocation20#>"},
 	{value:"Storage",text:"<#AiMesh_NodeLocation21#>"}, {value:"Balcony",text:"<#AiMesh_NodeLocation22#>"}, {value:"Meeting Room",text:"<#AiMesh_NodeLocation23#>"},
 	{value:"Garage",text:"<#AiMesh_NodeLocation25#>"}, {value:"Gaming Room",text:"<#AiMesh_NodeLocation27#>"}, {value:"Gym",text:"<#AiMesh_NodeLocation28#>"},
-	{value:"Custom",text:"<#AiMesh_NodeLocation24#>"}
+	{value:"Outdoor",text:"<#AiMesh_NodeLocation29#>"}, {value:"Custom",text:"<#AiMesh_NodeLocation24#>"}
 ];
 
 var radioHintIgnored = false;
@@ -1395,7 +1396,7 @@ function show_banner(L3){// L3 = The third Level of Menu
 							</div>
 							<div style="display:table-cell;vertical-align:middle;width:100%;text-align:center">`;
 		if (is_CN || ui_lang == "CN") {
-			banner_code += `<div style="padding-left: 30px;"><a href="${Android_app_link}" target="_blank"><div style="width:160px;font-size:24px;border:1px solid #BDBDBD;padding: 10px 4px;border-radius: 6px;margin: auto;">Android App</div></a></div>`;
+			banner_code += `<div style="padding-left: 30px;"><a href="${Android_app_link}" target="_blank" rel="noreferrer"><div style="width:160px;font-size:24px;border:1px solid #BDBDBD;padding: 10px 4px;border-radius: 6px;margin: auto;">Android App</div></a></div>`;
 		} else {
 			banner_code += `<div style="padding-left: 30px;"><a href="${Android_app_link}" target="_blank"><div style="width:160px;height:46px;background:url('images/googleplay.png') no-repeat;background-size:100%;margin:auto;"></div></a></div>`;
 		}

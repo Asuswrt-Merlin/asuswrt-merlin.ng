@@ -502,6 +502,10 @@ function openLink(s){
 			tourl = "https://freedns.afraid.org/signup/";
 		else if (document.form.ddns_server_x.value == 'FREEMYIP.COM')
 			tourl = "https://freemyip.com";
+		else if (document.form.ddns_server_x.value == 'DUCKDNS.ORG')
+			tourl = "https://www.duckdns.org/";
+		else if (document.form.ddns_server_x.value == 'DNSPOD.CN')
+			tourl = "https://www.dnspod.cn";
 		else	tourl = "";
 		link = window.open(tourl, "DDNSLink","toolbar=yes,location=yes,directories=no,status=yes,menubar=yes,scrollbars=yes,resizable=yes,copyhistory=no,width=640,height=480");
 	}

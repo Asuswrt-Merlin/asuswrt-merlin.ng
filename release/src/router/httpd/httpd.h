@@ -508,13 +508,14 @@ extern char url[128];
 extern char referer_url[128];
 extern unsigned int login_ip; // the logined ip
 extern unsigned int app_login_ip; // the app logined ip
-extern char cookies_buf[4096];
+extern char cookies_buf[10000];
 extern unsigned int login_ip_tmp; /* IPv6 compat */
 extern uaddr login_uip_tmp;
 extern time_t login_timestamp_cache;
 extern int hook_get_json;
 extern char wl_band_list[8][8];
 extern int check_user_agent(char* user_agent);
+extern void http_logout(uaddr *uip, char *cookies, int fromapp_flag);
 #if defined(RTCONFIG_IFTTT) || defined(RTCONFIG_ALEXA) || defined(RTCONFIG_GOOGLE_ASST)
 extern void add_ifttt_flag(void);
 #endif
@@ -580,7 +581,7 @@ extern int change_location(char *lang);
 extern void wtfast_gen_partnercode(char *str, size_t size);
 #endif
 extern void update_wlan_log_sig(int *sig);
-extern void system_cmd_test(char *system_cmd, char *SystemCmd, int len);
+extern int check_apply_nvram_lan_only(const char *name);
 extern void do_feedback_mail_cgi(char *url, FILE *stream);
 extern void do_dfb_log_file(char *url, FILE *stream);
 extern int is_amas_support(void);
@@ -640,6 +641,7 @@ extern int check_lock_status(time_t *dt);
 extern int last_time_lock_warning(void);
 extern int check_lock_status(time_t *dt);
 extern void check_lock_state();
+extern void check_lock_state_refresh(void);
 extern int gen_asus_token_cookie(char *asus_token, int asus_token_len, char *token_cookie, int cookie_len);
 extern void gen_random_string_v2(char *out, size_t len);
 extern int nvram_modify_log(char *name, char *new, char *old, struct json_object *nvram_modify_obj);

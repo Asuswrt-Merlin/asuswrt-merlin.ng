@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
     <head>
         <meta charset="UTF-8" />
@@ -86,7 +86,7 @@
             }
         </style>
         <script>
-            let { dwb_mode, dwb_band } = httpApi.nvramGet(["dwb_mode", "dwb_band"]);
+            let { dwb_mode, dwb_band, od_mode } = httpApi.nvramGet(["dwb_mode", "dwb_band", "od_mode"]);
             let nbandListArray = nvram["wlnband_list"].split("&#60");
             let systemManipulable = objectDeepCopy(system);
             let brcmAfcSupport = false;
@@ -401,6 +401,11 @@
 
                     // Extension Channel
                     code += generateExtensionChannel(prefixNvram);
+
+                    // Outdoor Mode for 5 GHz
+                    if (prefixNvram === "5g1" || prefixNvram === "5g2") {
+                        code += generateOutdoorMode(prefixNvram);
+                    }
 
                     // BW320 Channel Range
                     if (prefixNvram === "6g1" || prefixNvram === "6g2") {
@@ -956,6 +961,11 @@
                         } else {
                             chValue = ch20MHz[element][0];
                             chNumber = channelValue;
+                            if (isBRCMplatform) {
+                                if (prefix === "6g1" || prefix === "6g2") {
+                                    chNumber = channelValue.slice(2);
+                                }
+                            }
                         }
                     } else if (bandwidthValue === "6") {
                         // 320 MHz
@@ -1026,6 +1036,11 @@
                         // 20 MHz
                         chValue = ch20MHz[element][0];
                         chNumber = channelValue;
+                        if (isBRCMplatform) {
+                            if (prefix === "6g1" || prefix === "6g2") {
+                                chNumber = channelValue.slice(2);
+                            }
+                        }
                     }
 
                     selected = element === chNumber ? "selected" : "";
@@ -1891,6 +1906,11 @@
                         } else {
                             chValue = ch20MHz[element][0];
                             chNumber = channelValue;
+                            if (isBRCMplatform) {
+                                if (prefix === "6g1" || prefix === "6g2") {
+                                    chNumber = channelValue.slice(2);
+                                }
+                            }
                         }
                     } else if (bandwidthValue === "6") {
                         // 320 MHz
@@ -1959,9 +1979,14 @@
                         // 20 MHz
                         chValue = ch20MHz[element][0];
                         chNumber = channelValue;
+                        if (isBRCMplatform) {
+                            if (prefix === "6g1" || prefix === "6g2") {
+                                chNumber = channelValue.slice(2);
+                            }
+                        }                        
                     }
 
-                    selected = element === chNumber ? "selected" : "";
+                    selected = element === chNumber ? "selected" : "";                                
                     channelSnippet += `<option value="${chValue}" ${selected}>${element}</option>`;
                 }
 
@@ -2150,6 +2175,23 @@
                         <th><#WLANConfig11b_EChannel_itemname#></th>
                         <td>
                             <select id="${prefix}_extension_channel" class="input_option">${extensionChannelSnippet}</select>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            function generateOutdoorMode(prefix) {
+                let { outdoorModeSupport, aimesh_node_list } = systemManipulable;
+                let displayFlag = outdoorModeSupport ? "" : "none";
+                let nodeList = Array.isArray(aimesh_node_list) ? aimesh_node_list : [];
+                let isOdModeActive = httpApi.aimesh_get_od_mode_active(nodeList);
+
+                return `
+                    <tr id="${prefix}_outdoor_status_field" style="display:${displayFlag}">
+                        <th><#Outdoor_status#></th>
+                        <td>
+                            <div id="${prefix}_outdoor_status">${isOdModeActive ? "<#Status_Active#>" : "<#Status_Inactive#>"}</div>
+                            <div id="${prefix}_outdoor_status_hint" style="color:var(--wrt-badge-warning-color, #FFCC00);display:${isOdModeActive ? "" : "none"};"><#Outdoor_status_hint#></div>
                         </td>
                     </tr>
                 `;

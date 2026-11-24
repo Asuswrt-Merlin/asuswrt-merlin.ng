@@ -271,15 +271,15 @@ char *processPacket(int sockfd, char *pdubuf, unsigned short cli_port, char *cli
 			if (strlen(nvram_safe_get("u2ec_mfg")) && strlen(nvram_safe_get("u2ec_device")))
 			{
 				if (strstr(nvram_safe_get("u2ec_device"), nvram_safe_get("u2ec_mfg")))
-					sprintf(ginfo->PrinterInfo, "%s", nvram_safe_get("u2ec_device"));
+					snprintf(ginfo->PrinterInfo, sizeof(ginfo->PrinterInfo), "%s", nvram_safe_get("u2ec_device"));
 				else
-					sprintf(ginfo->PrinterInfo, "%s %s", nvram_safe_get("u2ec_mfg"), nvram_safe_get("u2ec_device"));
+					snprintf(ginfo->PrinterInfo, sizeof(ginfo->PrinterInfo), "%s %s", nvram_safe_get("u2ec_mfg"), nvram_safe_get("u2ec_device"));
 			}
 #endif
 		     get_discovery_ssid(ssid_g, sizeof(ssid_g));
-		     strcpy(ginfo->NetMask, get_lan_netmask());
-		     strcpy(ginfo->ProductID, productid_g);	// disable for tmp
-		     strcpy(ginfo->FirmwareVersion, firmver_g);	// disable for tmp
+		     strlcpy(ginfo->NetMask, get_lan_netmask(), sizeof(ginfo->NetMask));
+		     strlcpy(ginfo->ProductID, productid_g, sizeof(ginfo->ProductID));	// disable for tmp
+		     strlcpy(ginfo->FirmwareVersion, firmver_g, sizeof(ginfo->FirmwareVersion));	// disable for tmp
 		     memcpy(ginfo->MacAddress, mac, 6);
 		     ginfo->sw_mode = get_sw_mode();
 #ifdef WCLIENT
@@ -327,16 +327,16 @@ char *processPacket(int sockfd, char *pdubuf, unsigned short cli_port, char *cli
 			if (strlen(nvram_safe_get("u2ec_mfg")) && strlen(nvram_safe_get("u2ec_device")))
 			{
 				if (strstr(nvram_safe_get("u2ec_device"), nvram_safe_get("u2ec_mfg")))
-					sprintf(ginfo->PrinterInfo, "%s", nvram_safe_get("u2ec_device"));
+					snprintf(ginfo->PrinterInfo, sizeof(ginfo->PrinterInfo), "%s", nvram_safe_get("u2ec_device"));
 				else
-					sprintf(ginfo->PrinterInfo, "%s %s", nvram_safe_get("u2ec_mfg"), nvram_safe_get("u2ec_device"));
+					snprintf(ginfo->PrinterInfo, sizeof(ginfo->PrinterInfo), "%s %s", nvram_safe_get("u2ec_mfg"), nvram_safe_get("u2ec_device"));
 			}
 #endif
 		     get_discovery_ssid(ssid_g, sizeof(ssid_g));
-   		     strcpy(ginfo->SSID, ssid_g);
-		     strcpy(ginfo->NetMask, get_lan_netmask());
-		     strcpy(ginfo->ProductID, productid_g);	// disable for tmp
-		     strcpy(ginfo->FirmwareVersion, firmver_g); // disable for tmp
+   		     strlcpy(ginfo->SSID, ssid_g, sizeof(ginfo->SSID));
+		     strlcpy(ginfo->NetMask, get_lan_netmask(), sizeof(ginfo->NetMask));
+		     strlcpy(ginfo->ProductID, productid_g, sizeof(ginfo->ProductID));	// disable for tmp
+		     strlcpy(ginfo->FirmwareVersion, firmver_g, sizeof(ginfo->FirmwareVersion)); // disable for tmp
 		     memcpy(ginfo->MacAddress, mac, 6);
 		     ginfo->sw_mode = get_sw_mode();
 #ifdef WAVESERVER    // eric++
@@ -547,7 +547,8 @@ fprintf(stderr, "3. NET_CMD_ID_MANU_CMD:\n");
 				);
 		     nvram_set("bs_mac", cmdstr);
 		     sprintf(cmdstr, "Set MAC %s", nvram_safe_get("bs_mac"));
-		     syslog(LOG_NOTICE, cmdstr);
+		     refresh_tz_env();	/* pick up runtime timezone change before syslog() */
+		     syslog(LOG_NOTICE, "%s", cmdstr);
 		     sendInfo(sockfd, pdubuf_res, send_port);
 		     return pdubuf_res;
 		}

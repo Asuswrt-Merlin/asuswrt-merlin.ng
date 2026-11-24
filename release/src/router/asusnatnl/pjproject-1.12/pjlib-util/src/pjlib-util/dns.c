@@ -129,14 +129,22 @@ static pj_status_t get_name_len(int rec_counter, const pj_uint8_t *pkt,
 	return PJLIB_UTIL_EDNSINNAMEPTR;
     }
 
+    if (start >= max)
+	return PJLIB_UTIL_EDNSINNAMEPTR;
+
     *name_len = *parsed_len = 0;
     p = start;
-    while (*p) {
+    while (p < max && *p) {
 	if ((*p & 0xc0) == 0xc0) {
 	    /* Compression is found! */
 	    int ptr_len = 0;
 	    int dummy;
 	    pj_uint16_t offset;
+
+	    /* Check that the 2-byte pointer itself is within the packet
+	     * before reading it (CVE-2023-27585 / CVE-2022-24793 family). */
+	    if (p + 1 >= max)
+		return PJLIB_UTIL_EDNSINNAMEPTR;
 
 	    /* Get the 14bit offset */
 	    pj_memcpy(&offset, p, 2);
@@ -148,7 +156,7 @@ static pj_status_t get_name_len(int rec_counter, const pj_uint8_t *pkt,
 		return PJLIB_UTIL_EDNSINNAMEPTR;
 
 	    /* Get the name length from that offset. */
-	    status = get_name_len(rec_counter+1, pkt, pkt + offset, max, 
+	    status = get_name_len(rec_counter+1, pkt, pkt + offset, max,
 				  &dummy, &ptr_len);
 	    if (status != PJ_SUCCESS)
 		return status;
@@ -160,8 +168,11 @@ static pj_status_t get_name_len(int rec_counter, const pj_uint8_t *pkt,
 	} else {
 	    unsigned label_len = *p;
 
-	    /* Check that label length is valid */
-	    if (pkt+label_len > max)
+	    /* Check that label length is valid (CVE-2023-27585 / CVE-2022-24793
+	     * family): the bound must be relative to the current cursor p, not
+	     * the packet base pkt, otherwise the check passes for almost any
+	     * label length. */
+	    if (p+1+label_len+1 > max)
 		return PJLIB_UTIL_EDNSINNAMEPTR;
 
 	    p += (label_len + 1);
@@ -199,11 +210,19 @@ static pj_status_t get_name(int rec_counter, const pj_uint8_t *pkt,
 	return PJLIB_UTIL_EDNSINNAMEPTR;
     }
 
+    if (start >= max)
+	return PJLIB_UTIL_EDNSINNAMEPTR;
+
     p = start;
-    while (*p) {
+    while (p < max && *p) {
 	if ((*p & 0xc0) == 0xc0) {
 	    /* Compression is found! */
 	    pj_uint16_t offset;
+
+	    /* Check that the 2-byte pointer itself is within the packet
+	     * before reading it (CVE-2023-27585 / CVE-2022-24793 family). */
+	    if (p + 1 >= max)
+		return PJLIB_UTIL_EDNSINNAMEPTR;
 
 	    /* Get the 14bit offset */
 	    pj_memcpy(&offset, p, 2);
@@ -223,8 +242,9 @@ static pj_status_t get_name(int rec_counter, const pj_uint8_t *pkt,
 	} else {
 	    unsigned label_len = *p;
 
-	    /* Check that label length is valid */
-	    if (pkt+label_len > max)
+	    /* Check that label length is valid (CVE-2023-27585 / CVE-2022-24793
+	     * family) */
+	    if (p+1+label_len+1 > max)
 		return PJLIB_UTIL_EDNSINNAMEPTR;
 
 	    pj_memcpy(name->ptr + name->slen, p+1, label_len);

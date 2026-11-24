@@ -1154,7 +1154,7 @@ function Get_Component_Setting_Profile_IPSec(_type){
 
 	$("<div>").attr({"id":"" + ipsec_preshared_key_parm.id + "_pwd_strength"}).append(Get_Component_PWD_Strength_Meter()).appendTo($detail_general).hide();
 
-	$("<div>").addClass("profile_title_item").append($("<span>").html("IKEv1 Config")).appendTo($detail_general);/* untranslated */
+	$("<div>").addClass("profile_title_item").append($("<span>").html("<#vpn_IKEv1_setup#>")).appendTo($detail_general);
 
 	var ipsec_exchange_mode_parm = {"title":"<#vpn_ipsec_Exchange_Mode#>", "id":"ipsec_exchange_mode", "text":"<#vpn_ipsec_Main_Mode#>"};
 	Get_Component_Pure_Text(ipsec_exchange_mode_parm).appendTo($detail_general);
@@ -1185,7 +1185,7 @@ function Get_Component_Setting_Profile_IPSec(_type){
 		$cert_status_bg.hide();
 	}
 
-	$("<div>").addClass("profile_title_item").append($("<span>").html("IKEv2 Config")).appendTo($cert_status_bg);/* untranslated */
+	$("<div>").addClass("profile_title_item").append($("<span>").html("<#vpn_IKEv2_setup#>")).appendTo($cert_status_bg);
 
 	var ipsec_cert_status_parm = {"title":"Certificate Status", "id":"ipsec_cert_status"};/* untranslated */
 	Get_Component_Cert_Status_IPSec(ipsec_cert_status_parm).appendTo($cert_status_bg);

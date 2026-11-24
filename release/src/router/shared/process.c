@@ -178,7 +178,7 @@ int process_mem_used(int pid)
 	FILE *fp;
 	char proc_status_path[PATH_MAX];
 	char line_buf[300];
-	char VmSize[32];
+	char VmSize[32] = {0};	/* stays empty (atoi() == 0) if sscanf() fails */
 	snprintf(proc_status_path, sizeof(proc_status_path), "/proc/%d/status", pid);
 	//_dprintf("path=[%s]\n", proc_status_path);
 	fp = fopen(proc_status_path, "r");
@@ -186,9 +186,9 @@ int process_mem_used(int pid)
 		while (fgets(line_buf, sizeof(line_buf), fp)) {
 			//_dprintf("line_buf=[%s]\n", line_buf);
 			if (strstr(line_buf, "VmSize:")) {
-				sscanf(line_buf, "%*s%s", VmSize);
+				sscanf(line_buf, "%*s%31s", VmSize);	/* 31 == sizeof(VmSize) - 1 */
 				fclose(fp);
-				return atoi(VmSize);
+				return safe_atoi(VmSize);
 			}
 		}
 		fclose(fp);

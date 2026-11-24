@@ -137,7 +137,7 @@ time_t login_timestamp_cache = 0;
 int url_do_auth = 0;
 int spam_count = 0;
 int auth_result = 1;
-char cookies_buf[4096];
+char cookies_buf[10000];
 int do_ssl = 0; 	// use Global for HTTPS upgrade judgment in web.c
 int ssl_stream_fd; 	// use Global for HTTPS stream fd in web.c
 int json_support = 0;
@@ -320,6 +320,9 @@ int HTS = 0;	//HTTP Transport Security
 
 struct timeval alarm_tv;
 time_t alarm_timestamp = 0;
+/* check_lock_state_refresh() runs every 3rd alarm tick (~60s); the nvram values
+ * it snapshots only change on NTP sync or LAN reconfiguration. */
+static int lock_state_refresh_tick = 0;
 int check_alive_flag = 0;
 
 /* Const vars */
@@ -2743,6 +2746,10 @@ reload_cert:
 		start_ssl(http_port);
 #endif
 
+	/* Cache the nvram values used by check_lock_state(), which runs in the
+	 * SIGALRM handler and must not call nvram there. */
+	check_lock_state_refresh();
+
 	/* Loop forever handling requests */
 	for (;;) {
 		const static struct timeval timeout = { .tv_sec = MAX_CONN_TIMEOUT, .tv_usec = 0 };
@@ -2756,6 +2763,10 @@ reload_cert:
 			clean_ban_ip_timeout();
 			alarm_tv.tv_sec = uptime();
 			check_alive_flag = 0;
+			if(++lock_state_refresh_tick >= 3){
+				lock_state_refresh_tick = 0;
+				check_lock_state_refresh();
+			}
 		}
 
 		memcpy(&rfds, &active_rfds, sizeof(rfds));

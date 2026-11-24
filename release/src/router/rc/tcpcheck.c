@@ -62,7 +62,7 @@ static struct connectinfo **cons;
 struct connectinfo {
   char *hostname;
   char *portname;
-  short port;
+  unsigned short port;
   int status;
   int socket;
   struct sockaddr_in *sockaddr;
@@ -91,8 +91,11 @@ static int setupsocket(int sock) {
 
   /* Last thing we do:  Set it nonblocking */
 
-  flags = O_NONBLOCK | fcntl(sock, F_GETFL);
-  fcntl(sock, F_SETFL, flags);
+  flags = fcntl(sock, F_GETFL);
+  if (flags == -1)
+    return -1;
+  if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1)
+    return -1;
   
   return 0;
 }
@@ -129,9 +132,19 @@ static int setuphost(struct connectinfo *cinfo, char *hostport)
     cinfo->port = atoi(port);
   }
   cinfo->portname = strdup(port);
+  if (cinfo->portname == NULL) {
+    return -1;
+  }
 
   cinfo->hostname = strdup(hostport);
+  if (cinfo->hostname == NULL) {
+    return -1;
+  }
   port = strchr(cinfo->hostname, ':');
+  if (port == NULL) {
+    /* No "host:port" separator; cinfo is released by the caller */
+    return -1;
+  }
   *port = 0;
   
   tmp = gethostbyname(cinfo->hostname);
@@ -151,10 +164,19 @@ static int setuphost(struct connectinfo *cinfo, char *hostport)
   }
 
   /* Set the socket stuff */
-  setupsocket(cinfo->socket);
+  if (setupsocket(cinfo->socket) != 0) {
+    close(cinfo->socket);
+    cinfo->socket = -1;
+    return -1;
+  }
   
   cinfo->socklen = sizeof(struct sockaddr_in);
   cinfo->sockaddr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+  if (cinfo->sockaddr == NULL) {
+    close(cinfo->socket);
+    cinfo->socket = -1;
+    return -1;
+  }
   bzero(cinfo->sockaddr, cinfo->socklen);
 
   bcopy(tmp->h_addr_list[0],
@@ -167,6 +189,24 @@ static int setuphost(struct connectinfo *cinfo, char *hostport)
   cinfo->sockaddr->sin_port = htons(cinfo->port);
   
   return 0;
+}
+
+/*
+ * free_connectinfo:  Releases everything setuphost() may have allocated for a
+ *                connectinfo.  socket must be -1 if it was never opened.
+ */
+static void free_connectinfo(struct connectinfo *cinfo)
+{
+  if (cinfo == NULL) {
+    return;
+  }
+  if (cinfo->socket >= 0) {
+    close(cinfo->socket);
+  }
+  free(cinfo->hostname);
+  free(cinfo->portname);
+  free(cinfo->sockaddr);
+  free(cinfo);
 }
 
 static void usage()
@@ -302,6 +342,7 @@ static void waitforconnects()
 
   /* Now clean up the remainder... they timed out. */
   for (i = 0; i < numcons; i++) {
+    if (cons[i] == NULL) continue;
     if (cons[i]->status == 0) {
       printf("%s:%d failed:  timed out\n",
 	     cons[i]->hostname, cons[i]->port);
@@ -325,6 +366,9 @@ int tcpcheck_main(int argc, char *argv[])
 
   numcons = argc-2;
   cons = malloc(sizeof(struct connectinfo *) * (numcons+1));
+  if (cons == NULL) {
+    exit(ERR_OTHER);
+  }
   bzero((char *)cons, sizeof(struct connectinfo *) * (numcons+1));
 
   pending = NULL;
@@ -332,14 +376,19 @@ int tcpcheck_main(int argc, char *argv[])
   
   /* Create a bunch of connection management structs */
   for (i = 2; i < argc; i++) {
-    if (pending == NULL)
-      pending = malloc(sizeof(struct connectinfo));
     if (pending == NULL) {
-      free(cons);
-      exit(ERR_OTHER);
+      pending = calloc(1, sizeof(struct connectinfo));
+      if (pending == NULL) {
+        free(cons);
+        exit(ERR_OTHER);
+      }
+      pending->socket = -1;
     }
     if (setuphost(pending, (char *)argv[i])) {
-      printf("%s failed.  could not resolve address\n", pending->hostname);
+      printf("%s failed.  could not resolve address\n",
+             pending->hostname ? pending->hostname : argv[i]);
+      free_connectinfo(pending);
+      pending = NULL;
     } else {
       cons[consused++]  = pending;
       pending = NULL;
@@ -466,6 +515,7 @@ int waitforresult(struct connectinfo *connection, int timeout)
 				fprintf(stderr, "[%d]%s:%s is alive\n", __LINE__, connection->hostname, connection->portname);
 				connection->status = 1;
 				close(connection->socket);
+				connection->socket = -1;
 				break;
 			}
 		}
@@ -523,11 +573,13 @@ int tcpcheck_retval(int timeout, char *host_port)
 		return -1;
 	}
 	bzero((char *)connection, sizeof(struct connectinfo));
+	connection->socket = -1;
 
 	if(setuphost(connection, host_port))
 	{
-		fprintf(stderr, "[tcpcheck_retval]Could not resolve address [%s]\n", connection->hostname);
-		free(connection);
+		fprintf(stderr, "[tcpcheck_retval]Could not resolve address [%s]\n",
+			connection->hostname ? connection->hostname : host_port);
+		free_connectinfo(connection);
 		return -1;
 	}
 
@@ -536,7 +588,7 @@ int tcpcheck_retval(int timeout, char *host_port)
 	if(res && errno != EINPROGRESS)
 	{
 		fprintf(stderr, "%s:%s failed\n", connection->hostname, connection->portname);
-		free(connection);
+		free_connectinfo(connection);
 		return -1;
 	}
 
@@ -546,7 +598,7 @@ int tcpcheck_retval(int timeout, char *host_port)
 	res = waitforresult(connection, timeout);
 	fprintf(stderr, "[tcpcheck_retval]res=%d\n", res);
 
-	free(connection);
+	free_connectinfo(connection);
 	return res;
 }
 

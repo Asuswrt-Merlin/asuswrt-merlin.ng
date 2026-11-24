@@ -256,17 +256,19 @@ procps_status_t* procps_scan(procps_status_t* sp, int flags)
 			/* see proc(5) for some details on this */
 			strcpy(filename_tail, "/stat");
 			n = read_to_buf(filename, buf);
-			if (n < 0)
+			if (n <= 0)
 				break;
 			cp = strrchr(buf, ')'); /* split into "PID (cmd" and "<rest>" */
-			/*if (!cp || cp[1] != ' ')
-				break;*/
+			if (!cp || cp[1] != ' ')
+				break;
 			cp[0] = '\0';
 			if (sizeof(sp->comm) < 16)
 				BUG_comm_size();
 			comm1 = strchr(buf, '(');
-			/*if (comm1)*/
+			if (comm1) {
 				strncpy(sp->comm, comm1 + 1, sizeof(sp->comm));
+				sp->comm[sizeof(sp->comm) - 1] = '\0';
+			}
 
 			n = sscanf(cp+2,
 				"%c %u "               /* state, ppid */

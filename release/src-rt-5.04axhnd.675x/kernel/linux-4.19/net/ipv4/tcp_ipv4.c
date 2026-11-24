@@ -1097,9 +1097,8 @@ static void tcp_v4_reqsk_destructor(struct request_sock *req)
 void tcp_v4_reqsk_destructor(struct request_sock *req)
 #endif
 {
-	struct ip_options_rcu *opt;
+	struct ip_options_rcu *opt = rcu_dereference_protected(inet_rsk(req)->ireq_opt, 1);
 
-	opt = rcu_dereference_protected(inet_rsk(req)->ireq_opt, 1);
 	if (opt)
 		kfree_rcu(opt, rcu);
 }

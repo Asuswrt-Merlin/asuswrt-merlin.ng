@@ -331,6 +331,11 @@ function initial(){
 	else
 		$("#ameshContainer").remove();
 
+	//not inside the amesh_support branch: a standalone outdoor-model CAP (od_mode=1, no
+	//RE node yet) must show the Outdoor Mode status too. The function hides the line itself
+	//whenever no outdoor-model device is in the topology.
+	updateOutdoorModeStatus();
+
 	set_default_choice();
 	if(!parent.usb_support || usbPortMax == 0){
 		$("#line3_img").hide();
@@ -1730,13 +1735,11 @@ function popupEditBlock(clientObj){
 					connectModeTip = "<#Radio#>: <#PASS_score4#>\n";
 					break;
 			}
-			if(stainfo_support) {
-				if(clientObj.curTx != "")
-					connectModeTip += "Tx Rate: " + clientObj.curTx + "\n";
-				if(clientObj.curRx != "")
-					connectModeTip += "Rx Rate: " + clientObj.curRx + "\n";
-				connectModeTip += "<#Access_Time#>: " + clientObj.wlConnectTime + "";
-			}
+			if(clientObj.curTx != "")
+				connectModeTip += "Tx Rate: " + clientObj.curTx + "\n";
+			if(clientObj.curRx != "")
+				connectModeTip += "Rx Rate: " + clientObj.curRx + "\n";
+			connectModeTip += "<#Access_Time#>: " + clientObj.wlConnectTime + "";
 		}
 
 		if(sw_mode != 4){
@@ -2275,6 +2278,35 @@ function updateClientsCount() {
 	}
 	setTimeout("updateClientsCount();", 5000);
 }
+
+/* Outdoor Mode(od_mode) status line of the Internet status card. Shown only while a
+ * certified outdoor model (see httpApi.aimesh_od_model_list) is in the topology AND any
+ * device - the CAP itself or any RE node - actually runs with od_mode=1; hidden otherwise.
+ * Clicking jumps to the Management tab on the AiMesh page (AiMesh.asp?current_tab=manage). */
+function updateOutdoorModeStatus() {
+	var outdoor_mode_div = document.getElementById("outdoor_mode_div");
+	if(outdoor_mode_div == null)
+		return;
+
+	// The global list stops updating while the AiMesh panel is open. Read a fresh
+	// list before checking model presence, so a newly added outdoor RE is detected.
+	var cfg_clientlist = (amesh_support && ameshRouter_support) ? httpApi.hookGet("get_cfg_clientlist", true) : [];
+	var od_model_in_topology = httpApi.aimesh_is_local_od_model();
+	if(!od_model_in_topology && Array.isArray(cfg_clientlist)){
+		od_model_in_topology = cfg_clientlist.some(function(item){
+			return httpApi.aimesh_is_node_od_model(item);
+		});
+	}
+
+	var od_mode_on = false;
+	if(od_model_in_topology){
+		// nvramGet also caches values for the page lifetime.
+		httpApi.nvramGet(["od_mode"], true);
+		od_mode_on = httpApi.aimesh_get_od_mode_active(cfg_clientlist);
+	}
+	outdoor_mode_div.style.display = od_mode_on ? "" : "none";
+	setTimeout(updateOutdoorModeStatus, 5000);
+}
 function setDefaultIcon() {
 	const mac = document.getElementById("macaddr_field").value;
 	select_image(clientList[mac], true);
@@ -2712,6 +2744,9 @@ function showClientlistModal(){
                                 <span id="ddns_fail_hint" class="notificationoff" onClick="show_ddns_fail_hint();" onMouseOut="nd();"></span>
                                 <span><img id="le_icon" title="Let's Encrypt" src="images/New_ui/networkmap/LE_badge_color.svg" style="width:25px; height:25px;"></span>
 							</div>
+						</div>
+						<div id="outdoor_mode_div" style="margin-top:5px;display:none;">
+							<a style="color:#FFF;text-decoration:underline;font-size:14px;" href="/AiMesh.asp?current_tab=manage"><#Outdoor_mode#> <#Status_Active#></a>
 						</div>
 						<div id="wlc_band_div" style="margin-top:5px;display:none">
 							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif;"><#Interface#>:</span>

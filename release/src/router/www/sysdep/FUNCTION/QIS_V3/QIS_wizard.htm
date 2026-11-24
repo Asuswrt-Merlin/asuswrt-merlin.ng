@@ -19,6 +19,7 @@
 		<script type="text/javascript" src="./mobile/js/plugins.js"></script>
 		<script type="text/javascript" src="./mobile/js/qisData.js"></script>
 		<script type="text/javascript" src="./mobile/js/handler.js"></script>
+		<script type="text/javascript" src="/js/aimesh_popup.js"></script>
 		<script type="text/javascript" src="./js/https_redirect/https_redirect.js"></script>
 		<script type="text/javascript" src="./js/asus_policy.js?v=5"></script>
 		<script>
@@ -44,6 +45,22 @@
 
 			if(isSupport("TS_UI") || isSupport("GS7_MIKU"))
 				$('link').last().after('<link group="extend_css" rel="stylesheet" type="text/css" href="/css/difference.css">');
+
+			var aimesh_location_arr = [
+				{value:"Home",text:"<#AiMesh_NodeLocation01#>"}, {value:"Living Room",text:"<#AiMesh_NodeLocation02#>"}, {value:"Dining Room",text:"<#AiMesh_NodeLocation03#>"},
+				{value:"Bedroom",text:"<#AiMesh_NodeLocation04#>"}, {value:"Office",text:"<#AiMesh_NodeLocation05#>"}, {value:"Stairwell",text:"<#AiMesh_NodeLocation06#>"},
+				{value:"Hall",text:"<#AiMesh_NodeLocation07#>"}, {value:"Kitchen",text:"<#AiMesh_NodeLocation08#>"}, {value:"Attic",text:"<#AiMesh_NodeLocation09#>"},
+				{value:"Basement",text:"<#AiMesh_NodeLocation10#>"}, {value:"Yard",text:"<#AiMesh_NodeLocation11#>"}, {value:"Master Bedroom",text:"<#AiMesh_NodeLocation12#>"},
+				{value:"Guest Room",text:"<#AiMesh_NodeLocation13#>"}, {value:"Kids Room",text:"<#AiMesh_NodeLocation14#>"}, {value:"Study Room",text:"<#AiMesh_NodeLocation15#>"},
+				{value:"Hallway",text:"<#AiMesh_NodeLocation16#>"}, {value:"Walk-in Closet",text:"<#AiMesh_NodeLocation17#>"}, {value:"Bathroom",text:"<#AiMesh_NodeLocation18#>"},
+				{value:"First Floor",text:"<#AiMesh_NodeLocation26#>"}, {value:"Second Floor",text:"<#AiMesh_NodeLocation19#>"}, {value:"Third Floor",text:"<#AiMesh_NodeLocation20#>"},
+				{value:"Storage",text:"<#AiMesh_NodeLocation21#>"}, {value:"Balcony",text:"<#AiMesh_NodeLocation22#>"}, {value:"Meeting Room",text:"<#AiMesh_NodeLocation23#>"},
+				{value:"Garage",text:"<#AiMesh_NodeLocation25#>"}, {value:"Gaming Room",text:"<#AiMesh_NodeLocation27#>"}, {value:"Gym",text:"<#AiMesh_NodeLocation28#>"},
+				{value:"Outdoor",text:"<#AiMesh_NodeLocation29#>"}, {value:"Custom",text:"<#AiMesh_NodeLocation24#>"}
+			];
+			/* mobile/pages/amasonboarding_page.html reads this off the window, so keep the
+			 * global explicit - it must survive this block ever being wrapped in a closure */
+			window.aimesh_location_arr = aimesh_location_arr;
 
 			$(document).ready(function(){
 				if(isSupport("TS_UI")){

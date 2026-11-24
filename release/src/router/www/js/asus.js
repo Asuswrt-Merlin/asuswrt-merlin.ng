@@ -1259,6 +1259,14 @@ system.aimesh_node_list = (() => {
     return _node_list;
 })();
 
+system.outdoorModeSupport = (() => {
+    // Outdoor Mode (od_mode) is a PER DEVICE setting, so this is the CAP's own support -
+    // it is what this page configures. Never use item.od_mode === "1" here: that is the
+    // device's current od_mode STATE, not whether the device supports the feature.
+    // system.aimesh_node_list is {} (not an array) on models without the AiMesh router role.
+    let nodeList = Array.isArray(system.aimesh_node_list) ? system.aimesh_node_list : [];
+    return httpApi.aimesh_get_od_mode_support(nodeList);
+})();
 system.language = (() => {
     let list = httpApi.hookGet("language_support_list");
     let { preferred_lang } = nvram;

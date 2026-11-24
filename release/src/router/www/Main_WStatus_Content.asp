@@ -79,6 +79,7 @@ function Get_wireless_log(){
 	$.ajax({
 		url: '/wl_log.asp',
 		dataType: 'text',
+		cache: false,	// Safari/WebKit serves GET XHR from cache, so the log never refreshes
 		timeout: 1500,
 		error: function(xhr){
 			if(dead > 30){

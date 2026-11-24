@@ -189,23 +189,29 @@ static char *probe_hfs(struct volume_id *id, char *dev)
 static char *probe_apfs(struct volume_id *id, char *dev)
 {
 #ifdef RTCONFIG_TUXERA_APFS
-	char cmd[32], buf[PATH_MAX];
+	char cmd[PATH_MAX + 32], buf[PATH_MAX];
 	FILE *fp;
 
 	memset(id->uuid, 0, sizeof(id->uuid));
 
-	snprintf(cmd, sizeof(cmd), "/usr/sbin/apfsinfo %s", dev);
+	/* dev is single-quoted into a shell command; refuse quotes and truncated commands */
+	if(!dev || strchr(dev, '\'')
+	   || snprintf(cmd, sizeof(cmd), "/usr/sbin/apfsinfo '%s'", dev) >= (int)sizeof(cmd))
+		return NULL;
+
 	if((fp = popen(cmd, "r")) != NULL){
 		int first = 1;
 		while(fgets(buf, sizeof(buf), fp) != NULL){
 			if(!strncmp(buf, "UUID", 4) && !first){
 				first = 0;
 
-				sscanf(buf, "UUID: %s", id->uuid);
+				/* Width must stay in sync with VOLUME_ID_UUID_SIZE (36) */
+				sscanf(buf, "UUID: %36s", id->uuid);
 				break;
 			}
 			else if(!strncmp(buf, "Name", 4))
-				sscanf(buf, "Name: %s %*s", id->label);
+				/* Width must stay in sync with VOLUME_ID_LABEL_SIZE (64) */
+				sscanf(buf, "Name: %64s %*s", id->label);
 		}
 		pclose(fp);
 	}

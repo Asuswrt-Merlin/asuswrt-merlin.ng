@@ -1753,6 +1753,10 @@ static pj_status_t decode_errcode_attr(pj_pool_t *pool,
     attr = PJ_POOL_ZALLOC_T(pool, pj_stun_errcode_attr);
     GETATTRHDR(buf, &attr->hdr);
 
+    /* Check that the attribute length is valid (CVE-2021-37706) */
+    if (attr->hdr.length < 4)
+        return PJNATH_ESTUNINATTRLEN;
+
     attr->err_code = buf[6] * 100 + buf[7];
 
     /* Get pointer to the string in the message */

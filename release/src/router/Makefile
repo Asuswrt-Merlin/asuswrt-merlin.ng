@@ -4170,7 +4170,7 @@ dnsmasq:  $(if $(RTCONFIG_DNSSEC_OPENSSL),openssl,) $(if $(RTCONFIG_DNSSEC_NETTL
 		$(if $(RTCONFIG_USB_EXTRAS),,-DNO_TFTP) \
 		$(if $(RTCONFIG_DNSSEC_OPENSSL),-I$(TOP)/openssl/include -DHAVE_DNSSEC,) \
 		$(if $(RTCONFIG_DNSSEC_NETTLE),-I$(TOP)/nettle/include -I$(TOP)/gmp -DHAVE_DNSSEC -DHAVE_DNSSEC_STATIC -DNO_GOST,)" \
-	CFLAGS="-Os -ffunction-sections -fdata-sections $(EXTRACFLAGS) -std=gnu99 \
+	CFLAGS="-Os -ffunction-sections -DASUSWRT -fdata-sections $(EXTRACFLAGS) -std=gnu99 \
 		$(if $(filter $(BUILD_NAME),RT-AX82_XD6 XD6_V2 ET12),-I$(TOP)/shared -I$(SRCBASE)/include -D$(MODEL),)" \
 	LDFLAGS="-ffunction-sections -fdata-sections -Wl,--gc-sections $(EXTRALDFLAGS) \
 		$(if $(filter $(BUILD_NAME),RT-AX82_XD6 XD6_V2 ET12),-L$(TOP)/shared -lshared -L$(TOP_PLATFORM)/nvram$(BCMEX)$(EX7) -lnvram -L$(TOP_PLATFORM)/wlcsm -lwlcsm,) \
@@ -7515,12 +7515,18 @@ endif
 ebtables-2.0.11-clean:
 	cd ebtables-2.0.11; make clean
 
-ebtables-2.0.11/configure:
-	if [ ! -f $@ ] ; then \
+# configure, Makefile.in, build-aux/ and config.h.in are untracked, so check
+# all of them: a tree that still has an old configure (e.g. after git pull
+# removed the others) must run autoreconf again or configure fails to find
+# install-sh, ltmain.sh or Makefile.in.
+ebtables-2.0.11-configure:
+	if [ ! -f ebtables-2.0.11/configure ] || \
+	   [ ! -f ebtables-2.0.11/Makefile.in ] || \
+	   [ ! -f ebtables-2.0.11/build-aux/install-sh ] || \
+	   [ ! -f ebtables-2.0.11/build-aux/ltmain.sh ] || \
+	   [ ! -f ebtables-2.0.11/config.h.in ] ; then \
 		cd ebtables-2.0.11 && autoreconf -fi; \
 	fi
-
-ebtables-2.0.11-configure: ebtables-2.0.11/configure
 	if [ ! -f ebtables-2.0.11/Makefile ] ; then \
 		cd ebtables-2.0.11 && \
 		$(CONFIGURE) $(EBTABLES_HOST) $(EBTABLES_TARGET) CC=$(EBTABLES_CC) CPP=$(EBTABLES_CPP) LD=$(EBTABLES_LD) \
@@ -8992,17 +8998,15 @@ GeoIP-1.6.2-clean:
 	-@[ ! -f GeoIP-1.6.2/Makefile ] || $(MAKE) -C GeoIP-1.6.2 distclean
 	@rm -f GeoIP-1.6.2/stamp-h1
 
-AUTOMAKE_117 := $(shell automake --version 2>/dev/null | head -n1 | grep -q '1\.17' && echo yes)
+# wget ships pre-generated autotools files; never regenerate them (needs
+# automake 1.17 + autoconf-archive and rewrites tracked files). Build only
+# lib/ and src/: doc/ would rewrite the tracked stamp-vti and version.texi.
+# LEX=true keeps the tracked css.c/css_.c: flex would otherwise regenerate
+# them (css.l looks newer after checkout) with shifted #line numbers.
+WGET_MAKE_ARGS := ACLOCAL=true AUTOMAKE=true AUTOCONF=true AUTOHEADER=true \
+	LEX=true SUBDIRS="lib src"
 
-wget/Makefile.in: wget/Makefile.am
-ifeq ($(AUTOMAKE_117),yes)
-	@echo "==> automake 1.17 detected, running autoreconf"
-	cd wget && autoreconf -fi
-else
-	@echo "==> automake 1.17 NOT found, skip autoreconf"
-endif
-
-wget/Makefile: wget/Makefile.in
+wget/Makefile:
 	cd wget && touch aclocal.m4 && touch configure && touch Makefile.in && touch src/Makefile.in && \
 		$(CONFIGURE) \
 		--with-ssl=openssl --prefix=/usr --sysconfdir=/etc \
@@ -9017,10 +9021,10 @@ wget/Makefile: wget/Makefile.in
 		LDFLAGS="$(EXTRALDFLAGS) -Wl,--gc-sections -L$(STAGEDIR)/usr/lib -pthread"
 
 wget: openssl zlib wget/Makefile
-	$(MAKE) -C $@ $(PARALLEL_BUILD)
+	$(MAKE) -C $@ $(PARALLEL_BUILD) $(WGET_MAKE_ARGS)
 
 wget-clean:
-	[ ! -f wget/Makefile ] || $(MAKE) -C wget distclean
+	[ ! -f wget/Makefile ] || $(MAKE) -C wget distclean $(WGET_MAKE_ARGS)
 	@rm -f wget/Makefile
 
 wget-install:

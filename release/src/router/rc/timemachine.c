@@ -51,6 +51,7 @@ int generate_afp_config(char *mpname)
 	FILE *fp;
 	char afp_config[80];
 	int ret = 0;
+	int vol_size_limit;
 
 	sprintf(afp_config, "%s/%s", AFP_CONFIG_PATH, AFP_CONFIG_FN);
 
@@ -81,8 +82,12 @@ int generate_afp_config(char *mpname)
 	fprintf(fp, "cnid scheme = dbd\n");
 	fprintf(fp, "ea = auto\n");
 	fprintf(fp, "time machine = yes\n");
-	if(nvram_get_int("tm_vol_size") > 0)
-		fprintf(fp, "vol size limit = %s\n", nvram_get("tm_vol_size"));
+	/* Write only the parsed numeric value: the raw nvram string can still
+	 * carry an injected newline when it is restored from an uploaded
+	 * settings file, which does not pass through the apply input check. */
+	vol_size_limit = nvram_get_int("tm_vol_size");
+	if(vol_size_limit > 0)
+		fprintf(fp, "vol size limit = %d\n", vol_size_limit);
 
 	fclose(fp);
 
@@ -295,88 +300,128 @@ void stop_avahi_daemon()
 }
 
 #endif
+/* Split one /proc/mounts record in place into its device and mount point
+ * fields (both NUL-terminated inside @line). The record is externally
+ * influenced (a USB volume label ends up in the mount point path), so walk
+ * it by hand instead of sscanf()-ing into fixed buffers. Returns 0 on
+ * success, -1 if the record does not have a third field after them. */
+static int split_mounts_record(char *line, char **dev, char **mnt)
+{
+	char *p = line;
+
+	p += strspn(p, " \t");
+	*dev = p;
+	p += strcspn(p, " \t\n");
+	if (p == *dev || (*p != ' ' && *p != '\t'))
+		return -1;
+	*p++ = '\0';
+
+	p += strspn(p, " \t");
+	*mnt = p;
+	p += strcspn(p, " \t\n");
+	if (p == *mnt || (*p != ' ' && *p != '\t'))
+		return -1;
+	*p = '\0';
+
+	return 0;
+}
+
 char *find_mountpoint(char *device_name)
 {
-	FILE *procpt;
-	char line[256], devname[48], mpname[48], system_type[10], mount_mode[128];
-	int dummy1, dummy2;
-	static char mount_point_name[32];
-									       
-	if ((procpt = fopen("/proc/mounts", "r")) != NULL)
-	while (fgets(line, sizeof(line), procpt))
-	{
-		memset(mpname, 0x0, sizeof(mpname));
-		if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
-			continue;
-		sprintf(mount_point_name, "/tmp/mnt/%s", device_name);		
-		if (!strcmp( mpname, mount_point_name))
-		{
-			//nvram_set("tm_partition_num",devname);
-			break;
-		}
+	static char mount_point_name[PATH_MAX];
+	int len;
+
+	/* The previous /proc/mounts scan never affected the result: the path
+	 * was rebuilt on every record and returned whether or not it matched,
+	 * so callers rely on check_if_dir_exist() instead. Keep that contract
+	 * (a label containing blanks is octal-escaped in /proc/mounts and would
+	 * never match anyway) and just build the path with a bounded write. */
+	if (device_name == NULL || *device_name == '\0')
+		return NULL;
+
+	/* Security: device_name must name a single entry directly under
+	 * /tmp/mnt/, never a path that can climb out of it (e.g. "../../.."). */
+	if (strchr(device_name, '/') != NULL ||
+	    !strcmp(device_name, ".") || !strcmp(device_name, ".."))
+		return NULL;
+
+	len = snprintf(mount_point_name, sizeof(mount_point_name), "/tmp/mnt/%s", device_name);
+	if (len < 0 || (size_t)len >= sizeof(mount_point_name)) {
+		mount_point_name[0] = '\0';
+		return NULL;
 	}
 
-	if (procpt)
-		fclose(procpt);
-
-	if(strlen(mount_point_name) > 0)
-		return mount_point_name;
-	return NULL;
+	return mount_point_name;
 }
 
 char *find_exchange_mountpoint(char *device_name)
 {
+	static const char mnt_prefix[] = "/tmp/mnt/";
+	static char mount_point_name[PATH_MAX];
 	FILE *procpt;
-	char line[256], devname[48], mpname[48], system_type[10], mount_mode[128];
-	int dummy1, dummy2;
-	static char mount_point_name[32];
-									       
-	if ((procpt = fopen("/proc/mounts", "r")) != NULL)
-	while (fgets(line, sizeof(line), procpt))
-	{
-		memset(mpname, 0x0, sizeof(mpname));
-		if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+	char *line = NULL, *devname, *mpname;
+	size_t line_cap = 0;
+	int found = 0;
+
+	mount_point_name[0] = '\0';
+
+	if (device_name == NULL || *device_name == '\0')
+		return NULL;
+
+	if ((procpt = fopen("/proc/mounts", "r")) == NULL)
+		return NULL;
+
+	while (getline(&line, &line_cap, procpt) != -1) {
+		if (split_mounts_record(line, &devname, &mpname) != 0)
 			continue;
-		
-		if (!strcmp( devname, device_name))
+
+		if (!strcmp(devname, device_name))
 		{
-			nvram_set("tm_device_name",mpname+9);
-			nvram_set("tm_partition_num",devname);
-			sprintf(mount_point_name, "%s", mpname);
+			/* tm_device_name is the mount point minus "/tmp/mnt/";
+			 * never index past the end of a shorter path. */
+			if (strncmp(mpname, mnt_prefix, sizeof(mnt_prefix) - 1) != 0 ||
+			    strlcpy(mount_point_name, mpname, sizeof(mount_point_name)) >= sizeof(mount_point_name)) {
+				mount_point_name[0] = '\0';
+				break;
+			}
+			nvram_set("tm_device_name", mpname + sizeof(mnt_prefix) - 1);
+			nvram_set("tm_partition_num", devname);
+			found = 1;
 			break;
 		}
 	}
 
-	if (procpt)
-		fclose(procpt);
+	free(line);
+	fclose(procpt);
 
-	if(strlen(mount_point_name) > 0)
-		return mount_point_name;
-	return NULL;
+	return found ? mount_point_name : NULL;
 }
 
 void find_tokenfile_partition()
 {
-	char token_path[80];
+	char token_path[PATH_MAX];
 	FILE *procpt;
-	char line[256], devname[48], mpname[48], system_type[10], mount_mode[128];
-	int dummy1, dummy2;
-							       
-	if ((procpt = fopen("/proc/mounts", "r")) != NULL)
-	while (fgets(line, sizeof(line), procpt))
-	{
-		memset(mpname, 0x0, sizeof(mpname));
-		if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+	char *line = NULL, *devname, *mpname;
+	size_t line_cap = 0;
+	int len;
+
+	if ((procpt = fopen("/proc/mounts", "r")) == NULL)
+		return;
+
+	while (getline(&line, &line_cap, procpt) != -1) {
+		if (split_mounts_record(line, &devname, &mpname) != 0)
 			continue;
 
-		sprintf(token_path, "%s/%s", mpname, TIMEMACHINE_TOKEN_FILE);
+		len = snprintf(token_path, sizeof(token_path), "%s/%s", mpname, TIMEMACHINE_TOKEN_FILE);
+		if (len < 0 || (size_t)len >= sizeof(token_path))
+			continue;
 		if(check_if_file_exist(token_path)){
 			find_backup_mac_date(mpname);
 		}
 	}
 
-	if (procpt)
-		fclose(procpt);
+	free(line);
+	fclose(procpt);
 }
 
 void find_backup_mac_date(char *mpname)
@@ -385,18 +430,18 @@ void find_backup_mac_date(char *mpname)
 	DIR *dir;
 	struct dirent *ptr;
 	char dir_path[80];
-	char backup_path[80];
+	char backup_path[80] = "";
 	char mac_name[48];
 	char mp_name[48];
 	char test_log[100];
 
 	char change[] = "\n";
 
-	sprintf(mp_name,"%s", mpname);
+	snprintf(mp_name, sizeof(mp_name), "%s", mpname);
 	write_timemachine_tokeninfo(mp_name);
 
-	sprintf(dir_path,"%s/%s", mpname, TIMEMACHINE_BACKUP_NAME);
-	sprintf(test_log,"dir_path = %s",dir_path);
+	snprintf(dir_path, sizeof(dir_path), "%s/%s", mpname, TIMEMACHINE_BACKUP_NAME);
+	snprintf(test_log, sizeof(test_log), "dir_path = %s", dir_path);
 	logmessage("Timemachine", test_log);
 	if(!(dir = opendir(dir_path)))
 		return;
@@ -410,9 +455,9 @@ void find_backup_mac_date(char *mpname)
 	    !strcmp(ptr->d_name, "..")
 	   )
 		continue;
-        	sprintf(backup_path,"%s/%s", dir_path, ptr->d_name);
-        	sprintf(mac_name,"%s", ptr->d_name);		
-		sprintf(test_log,"mac_name = %s",mac_name);
+		snprintf(backup_path, sizeof(backup_path), "%s/%s", dir_path, ptr->d_name);
+		snprintf(mac_name, sizeof(mac_name), "%s", ptr->d_name);
+		snprintf(test_log, sizeof(test_log), "mac_name = %s", mac_name);
 		logmessage("Timemachine", test_log);
 		write_timemachine_tokeninfo(mac_name);
     	}
@@ -421,15 +466,18 @@ void find_backup_mac_date(char *mpname)
 	//find date
 	char history_file[128];
 	char line[256], string_line_tmp[96], backup_time[48], backup_time_t[48], *string_line;
-	sprintf(history_file,"%s/com.apple.TimeMachine.SnapshotHistory.plist", backup_path);
+	snprintf(history_file, sizeof(history_file), "%s/com.apple.TimeMachine.SnapshotHistory.plist", backup_path);
 	FILE *fp_t;
 	if ((fp_t = fopen(history_file, "r")) != NULL)
 	while (fgets(line, sizeof(line), fp_t))
 	{
 		if ((string_line = strstr(line, "<string>")) != NULL){
-			sprintf(string_line_tmp,"%s",string_line);
-			sscanf(string_line_tmp, "<string>%s</string>", backup_time_t);
-			strncpy(backup_time, backup_time_t, 17);
+			snprintf(string_line_tmp, sizeof(string_line_tmp), "%s", string_line);
+			backup_time_t[0] = '\0';
+			/* Width must stay in sync with sizeof(backup_time_t) - 1 */
+			if (sscanf(string_line_tmp, "<string>%47s</string>", backup_time_t) != 1)
+				continue;
+			strlcpy(backup_time, backup_time_t, 18);
 			//sprintf(test_log,"backup_time = %s",backup_time);
 			//logmessage("Timemachine", test_log);
 			write_timemachine_tokeninfo(backup_time);

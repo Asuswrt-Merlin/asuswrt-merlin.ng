@@ -835,9 +835,9 @@ void del_beacon_vsie_guest(char *hexdata)
     strlcpy(wl_ifnames, nvram_safe_get("wl_ifnames"), sizeof(wl_ifnames));
     foreach (word, wl_ifnames, next) {
         if (nvram_get_int("re_mode") == 1)  // RE
-            subunit = 3;
-        else  // CAP/Router
             subunit = 2;
+        else  // CAP/Router
+            subunit = 1;
         for (; subunit <= num_of_mssid_support(unit); subunit++) {
             char buf[] = "wlXX.XX_ifname";
             memset(buf, 0, sizeof(buf));
@@ -1071,7 +1071,7 @@ void set_wlan_service_status(int bssidx, int vifidx, int enabled)
 #ifdef RTCONFIG_BRCM_HOSTAPD
         FILE *fp1 = NULL;
         char cmd1[64], buf1[256];
-        if(nvram_match("hapd_enable", "1")) {
+        if(nvram_match("hapd_enable", "1") && is_valid_ifname(ifname)) {
                 snprintf(cmd1, sizeof(cmd1), "hostapd_cli -i %s ping", ifname);
                 fp1 = popen(cmd1, "r");
                 if(fp1) {
@@ -1132,7 +1132,9 @@ void set_wlan_service_status(int bssidx, int vifidx, int enabled)
 		dbg("ifname %s bsscfg_idx %d bss %s\n", ifname, bsscfg_idx, isup ? "up" : "down");
 		if (!isup) {
 			dbg("reinit ifname %s\n", ifname);
-			doSystem("wl -i %s reinit", ifname);
+			/* Use safe_do_system(): tokenized argv via _eval(), no shell,
+			 * so ifname cannot be used for command injection. */
+			safe_do_system("wl -i %s reinit", ifname);
 		}
 	}
 #endif
@@ -1153,7 +1155,7 @@ void set_wlan_service_status(int bssidx, int vifidx, int enabled)
 	FILE *fp = NULL;
 	char cmd[64], buf[256];
 	int hapd_is_running = 0;
-	if(nvram_match("hapd_enable", "1")) {
+	if(nvram_match("hapd_enable", "1") && is_valid_ifname(ifname)) {
 		snprintf(cmd, sizeof(cmd), "hostapd_cli -i %s ping", ifname);
 		fp = popen(cmd, "r");
 		if(fp) {

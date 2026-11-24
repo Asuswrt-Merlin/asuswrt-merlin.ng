@@ -18,6 +18,18 @@
   "Title": "[Adaptive QoS] Introduction and settings of QoS on ASUS Router"
  },
  {
+  "Page": "Advanced_QOSUserPrio_Content.asp",
+  "Display": "<#HOWTOSETUP#>",
+  "FAQ_Link": "110",
+  "Title": "[Adaptive QoS] Introduction and settings of QoS on ASUS Router"
+ },
+ {
+  "Page": "Advanced_QOSUserRules_Content.asp",
+  "Display": "<#HOWTOSETUP#>",
+  "FAQ_Link": "110",
+  "Title": "[Adaptive QoS] Introduction and settings of QoS on ASUS Router"
+ },
+ {
   "Page": "AdaptiveQoS_WebHistory.asp",
   "Display": "<#HOWTOSETUP#>",
   "FAQ_Link": "173",

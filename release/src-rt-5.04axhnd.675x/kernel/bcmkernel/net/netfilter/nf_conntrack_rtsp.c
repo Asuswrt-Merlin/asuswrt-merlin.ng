@@ -148,6 +148,19 @@ static int get_cseq(const char *str)
 	return (int) cseq;
 }
 
+/* Parse a base 10 number like simple_strtoul(), but never read at or after
+ * end: tcpdata is not NUL terminated, so simple_strtoul() would read one byte
+ * past the payload when the number is the last thing in it. */
+static unsigned long rtsp_strtoul(const char *s, const char *end, char **endp)
+{
+	unsigned long val = 0;
+
+	while (s < end && *s >= '0' && *s <= '9')
+		val = val * 10 + (*s++ - '0');
+	*endp = (char *)s;
+	return val;
+}
+
 /* Get next message in a packet */
 static int get_next_message(const char *tcpdata, int tcpdatalen,
 			    int *msgoff, int *msglen, int *msghdrlen)
@@ -171,7 +184,16 @@ static int get_next_message(const char *tcpdata, int tcpdatalen,
 			*msglen = *msghdrlen + 4;
 		} else {
 			unsigned long cl = simple_strtoul(tcpdata+*msgoff+cloff+16, NULL, 10);
-			*msglen = *msghdrlen + 4 + cl;
+			/* msghdrlen + 4 always fits in the remaining payload, so
+			 * remain is never negative. Clamp an oversized
+			 * Content-Length to the payload end, otherwise msglen
+			 * wraps and msgoff goes backwards or out of bounds. */
+			unsigned long remain = tcpdatalen - *msgoff - *msghdrlen - 4;
+
+			if (cl > remain)
+				*msglen = tcpdatalen - *msgoff;
+			else
+				*msglen = *msghdrlen + 4 + cl;
 		}
 	}
 
@@ -200,14 +222,25 @@ static int get_next_client_port(const char *tcpdata, int tpoff, int tplen,
 	if (off < 0)
 		return 0;
 	*portoff += off + 13;
+	/* Nothing left to parse after ";client_port=" */
+	if (*portoff >= tpoff + tplen)
+		return 0;
 
-	*rtpport = htons((unsigned short)simple_strtoul(tcpdata+*portoff,
-							&p, 10));
-	if (*p != '-' && *p != '/') {
+	*rtpport = htons((unsigned short)rtsp_strtoul(tcpdata+*portoff,
+						      tcpdata+tpoff+tplen, &p));
+	/* No digit after ";client_port=": portlen would be 0, and the caller
+	 * treats portlen == 0 as "first client_port" and rescans from the
+	 * start of the header forever. */
+	if (p == tcpdata + *portoff)
+		return 0;
+	if (p == tcpdata + tpoff + tplen || (*p != '-' && *p != '/')) {
 		*dash = 0;
 	} else {
 		*dash = *p++;
-		*rtcpport = htons((unsigned short)simple_strtoul(p, &p, 10));
+		if (p >= tcpdata + tpoff + tplen)
+			return 0;
+		*rtcpport = htons((unsigned short)rtsp_strtoul(p,
+						      tcpdata+tpoff+tplen, &p));
 	}
 	*portlen = p - tcpdata - *portoff;
 	return 1;
@@ -253,12 +286,15 @@ static int get_next_dest_ipport(const char *tcpdata, int tpoff, int tplen,
 	}
 	*destlen = p - tcpdata - *destoff;
 
-	if (*p != ':') {
+	if (p >= tcpdata + tpoff + tplen || *p != ':') {
 		return 0;
 	}
 	*portoff = p - tcpdata + 1;
+	if (*portoff >= tpoff + tplen)
+		return 0;
 
-	*port = htons((unsigned short)simple_strtoul(tcpdata+*portoff, &p, 10));
+	*port = htons((unsigned short)rtsp_strtoul(tcpdata+*portoff,
+						   tcpdata+tpoff+tplen, &p));
 	*portlen = p - tcpdata - *portoff;
 
 	return 1;

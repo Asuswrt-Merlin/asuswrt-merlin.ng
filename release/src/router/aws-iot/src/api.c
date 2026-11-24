@@ -7,6 +7,7 @@
 #include <limits.h>
 
 #include <dirent.h>
+#include <sys/statvfs.h>
 #include <errno.h>
 
 // #ifdef __cplusplus  
@@ -1265,9 +1266,24 @@ void get_sha256(const char *input_str, unsigned char * output_buffer)
 
 int get_usb_space(unsigned long long int *total_space, unsigned long long int *used_space, unsigned long long int *available_space, char *tencent_download_path) {
 
+  struct statvfs sv;
+
+  /* tencent_download_path is nvram-controlled: never hand it to a shell.
+   * Query the filesystem directly and only accept paths under /mnt/. */
+  if (tencent_download_path == NULL || strncmp(tencent_download_path, "/mnt/", 5) != 0) {
+    Cdbg(API_DBG, "invalid tencent_download_path");
+    return 0;
+  }
+
+  /* Defense in depth: extra check for dangerous characters even after httpd validation */
+  if(strchr(tencent_download_path, ';') || strchr(tencent_download_path, '`') ||
+     strchr(tencent_download_path, '$') || strstr(tencent_download_path, "..")) {
+    Cdbg(API_DBG, "tencent_download_path contains invalid characters");
+    return 0;
+  }
 
   DIR* dir = opendir(tencent_download_path);
-  
+
   if (dir) {
       /* Directory exists. */
       closedir(dir);
@@ -1281,50 +1297,15 @@ int get_usb_space(unsigned long long int *total_space, unsigned long long int *u
     return 0;
   }
 
-
-  char usb_path[64] = {0};
-  int usb_path_len = strlen(tencent_download_path) - 5;   // remove /.INO
-  strncpy(usb_path, tencent_download_path, usb_path_len);
-
-
-  char df_command[128] = {0};
-  snprintf(df_command, 128, "df %s > /tmp/df_tmp 2>&1", usb_path);
-
-  system(df_command);
-
-  FILE *fp;
-  char file_info[1023];
-
-  if ((fp = fopen("/tmp/df_tmp", "r")) == NULL) {
-    Cdbg(API_DBG, "%s open_file_error", "/tmp/df_tmp");
+  if (statvfs(tencent_download_path, &sv) != 0) {
+    Cdbg(API_DBG, "%s > statvfs() failed", tencent_download_path);
     return -1;
   }
 
-  int i = 0;
-
-  while(fgets(file_info, 1023, fp) != NULL) {
-
-    i++;
-    if(i == 1) {
-      continue;
-    }
-
-    char filesystem[32];
-
-    sscanf(file_info, "%s  %llu %llu %llu", filesystem, total_space, used_space, available_space);
-
-    // if(total_space < 0) {
-
-    //   total_space = 0;
-    //   available_space = 0;
-    //   total_space = 0;z
-
-    //   Cdbg(API_DBG, "Get Usb data error, total_space = 0, available_space = 0");
-    // }
-
-  }
-
-  fclose(fp);
+  /* same units as df: 1K-blocks */
+  *total_space = (unsigned long long)sv.f_blocks * sv.f_frsize / 1024;
+  *used_space = ((unsigned long long)sv.f_blocks - sv.f_bfree) * sv.f_frsize / 1024;
+  *available_space = (unsigned long long)sv.f_bavail * sv.f_frsize / 1024;
 
   return 0;
 }

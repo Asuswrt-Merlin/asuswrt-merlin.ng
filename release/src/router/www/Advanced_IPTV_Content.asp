@@ -715,6 +715,14 @@ function check_port_conflicts(){
 		}
 	}
 
+	if(isSupport("lanwan_iptv")){//Ethernet WAN port should not be equal to IPTV port
+		let eth_wan = is_iptv_wanport_conflict() ? "wan" : get_current_eth_wan();//WAN will be set back to default WAN
+		let switch_wantag = document.form.switch_wantag.value;
+		let isp_profile = (switch_wantag != "none" && switch_wantag != "manual") ? get_isp_settings(switch_wantag) : {};
+		if(is_eth_wan_iptv_port_conflict(eth_wan, switch_wantag, iptv_port, isp_profile))
+			wan_port_conflict = true;
+	}
+
 	if(lacp_support && lacp_enabled && document.form.switch_wantag.value == "none"){
 		bonding_port_settings.forEach(function(bonding_value){
 			var bonding_port = bonding_value.text;
@@ -912,7 +920,7 @@ function applyRule(){
 				return false;
 		}
 
-		if(((isSupport("autowan") && autowan_enable == "1") || !use_single_default_wan_sfp()) &&
+		if(is_iptv_wanport_conflict() &&
 			(document.form.switch_stb_x.value != "0" || document.form.switch_wantag.value != "none")){
 			var hint_str = `<#conflict_function_wanport_hint#>`;
 			var msg = "";
@@ -1597,28 +1605,12 @@ function close_autowan_hint(){
 }
 
 function confirm_autowan_change(){
-	let wan_obj = eth_wan_list["wan"];
 	let lacp_ifnames_x = httpApi.nvramGet(["lacp_ifnames_x"], true).lacp_ifnames_x;
 
 	$("#autowan_hint_div").hide();
-	if(wan_obj.hasOwnProperty("extra_settings")){
-		let extra_settings = wan_obj.extra_settings;
-		$.each(extra_settings, function(key) {
-			if(document.getElementsByName(key).length > 0){
-				document.getElementsByName(key)[0].value = extra_settings[key];
-			}
-			else{
-				$('<input>').attr({
-					type: 'hidden',
-					name: key,
-					value: extra_settings[key]
-				}).appendTo('form');
+	apply_eth_wan_extra_settings("wan");
 
-			}
-		});
-	}
-
-	if(wans_dualwan_orig.indexOf("none") == -1){//Disable DualWAN
+	if(!is_single_eth_wan()){//Disable DualWAN or set non-Ethernet single WAN (e.g. USB) back to default Ethernet WAN
 		document.form.wans_dualwan.disabled = false;
 		document.form.wans_dualwan.value = "wan none";
 	}
@@ -1669,11 +1661,154 @@ function get_default_wan_name(){
 	return default_wan_name;
 }
 
+function is_dualwan_enabled(){
+	return (wans_dualwan_orig.indexOf("none") == -1);
+}
+
+/* Ethernet WAN types of single WAN in wans_dualwan (WAN/WAN2/SFPP in eth_wantype() of shared.h) */
+const SINGLE_ETH_WAN_TYPES = ["wan", "wan2", "sfp+"];
+
+/* Single Ethernet WAN, e.g. "wan none", "wan2 none", "sfp+ none". USB/DSL are saved as "usb none"/"dsl none" */
+function is_single_eth_wan(){
+	return (!is_dualwan_enabled() && SINGLE_ETH_WAN_TYPES.indexOf(wans_dualwan_orig.split(" ")[0]) != -1);
+}
+
+/* Single WAN on a port in eth_wan_list (all saved as "wan none") */
+function is_single_eth_wan_list_wan(){
+	return (!is_dualwan_enabled() && wans_dualwan_orig.split(" ")[0] == "wan");
+}
+
+/* IPTV requires WAN to be set back to default Ethernet WAN (and Dual WAN disabled) */
+function is_iptv_wanport_conflict(){
+	if(isSupport("autowan") && autowan_enable == "1")
+		return true;
+
+	if(is_dualwan_enabled())
+		return true;
+
+	if(isSupport("lanwan_iptv") && is_single_eth_wan_list_wan())
+		return false;
+
+	return !use_single_default_wan_sfp();
+}
+
+function get_current_eth_wan(){
+	let current_eth_wan = "";
+
+	if(!is_single_eth_wan_list_wan() || isEmpty(eth_wan_list))
+		return "";
+
+	$.each(eth_wan_list, function(key) {
+		let wan_obj = eth_wan_list[key];
+		if(!wan_obj.hasOwnProperty("extra_settings"))
+			return true;
+
+		let extra_settings = wan_obj.extra_settings;
+		let current_value_list = httpApi.nvramGet(Object.keys(extra_settings), true);
+		let matched = true;
+		$.each(extra_settings, function(extra_settings_key) {
+			if(current_value_list[extra_settings_key] != extra_settings[extra_settings_key]){
+				matched = false;
+				return false;
+			}
+		});
+
+		if(matched){
+			current_eth_wan = key;
+			return false;
+		}
+	});
+
+	return current_eth_wan;
+}
+
+/* Get LAN port numbers from port name, e.g. "10G WAN/LAN2" -> ["2"], "LAN2 & LAN-3" -> ["2", "3"] */
+function get_lan_port_nums(port_name){
+	let lan_port_nums = [];
+	let lan_port_regex = /LAN-?(\d+)/gi;
+	let matched = null;
+
+	while((matched = lan_port_regex.exec(port_name)) != null)
+		lan_port_nums.push(matched[1]);
+
+	return lan_port_nums;
+}
+
+/* Get port names used by IPTV/VoIP/Bridge in stbPortMappings/port_definitions */
+function get_iptv_port_names(switch_wantag, switch_stb_x, isp_profile){
+	let port_names = [];
+
+	if(switch_wantag == "none"){
+		for(let i = 0; i < stbPortMappings.length; i++){
+			if(switch_stb_x == stbPortMappings[i].value){
+				if(stbPortMappings[i].comboport_value_list.length != 0){
+					stbPortMappings[i].comboport_value_list.split(" ").forEach(function(combo_value){
+						for(let j = 0; j < stbPortMappings.length; j++){
+							if(combo_value == stbPortMappings[j].value)
+								port_names.push(stbPortMappings[j].name);
+						}
+					});
+				}
+				else
+					port_names.push(stbPortMappings[i].name);
+				break;
+			}
+		}
+	}
+	else if(switch_wantag != "manual" && !isEmpty(isp_profile)){
+		port_names.push(isp_profile.iptv_port, isp_profile.voip_port, isp_profile.bridge_port);
+	}
+	else if(!isEmpty(port_definitions)){//manual or unknown profile: switch_stb_x 3: VoIP, 4: IPTV, 6/8: VoIP and IPTV
+		if(switch_stb_x == "3" || switch_stb_x == "6" || switch_stb_x == "8")
+			port_names.push(port_definitions.VOIP_PORT);
+		if(switch_stb_x == "4" || switch_stb_x == "6" || switch_stb_x == "8")
+			port_names.push(port_definitions.IPTV_PORT);
+	}
+
+	return port_names.filter(function(port_name){ return (port_name != undefined && port_name != ""); });
+}
+
+/* Check if Ethernet WAN port is used by IPTV/VoIP/Bridge port */
+function is_eth_wan_iptv_port_conflict(eth_wan, switch_wantag, switch_stb_x, isp_profile){
+	if(isEmpty(eth_wan_list) || !eth_wan_list.hasOwnProperty(eth_wan) || !eth_wan_list[eth_wan].hasOwnProperty("wan_name"))
+		return false;
+
+	let wan_lan_port_nums = get_lan_port_nums(eth_wan_list[eth_wan].wan_name);
+	if(wan_lan_port_nums.length == 0)
+		return false;
+
+	return get_iptv_port_names(switch_wantag, switch_stb_x, isp_profile).some(function(port_name){
+		return (get_lan_port_nums(port_name).indexOf(wan_lan_port_nums[0]) != -1);
+	});
+}
+
+function apply_eth_wan_extra_settings(eth_wan){
+	if(isEmpty(eth_wan_list) || !eth_wan_list.hasOwnProperty(eth_wan))
+		return;
+
+	let wan_obj = eth_wan_list[eth_wan];
+	if(wan_obj.hasOwnProperty("extra_settings")){
+		let extra_settings = wan_obj.extra_settings;
+		$.each(extra_settings, function(key) {
+			if(document.getElementsByName(key).length > 0){
+				document.getElementsByName(key)[0].value = extra_settings[key];
+			}
+			else{
+				$('<input>').attr({
+					type: 'hidden',
+					name: key,
+					value: extra_settings[key]
+				}).appendTo('form');
+			}
+		});
+	}
+}
+
 function use_single_default_wan_sfp(){
 	let _use_single_default_wan = false;
 	let _use_single_sfp = false;
 
-	if(wans_dualwan_orig.indexOf("none") == -1)
+	if(!is_single_eth_wan())
 		_use_single_default_wan = false;
 	else if(!isEmpty(eth_wan_list)){
 		$.each(eth_wan_list, function(key) {

@@ -12,6 +12,7 @@
 
 #ifdef RTCONFIG_USB
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1144,9 +1145,6 @@ void stop_usb_program(int mode)
 
 #ifdef RTCONFIG_WEBDAV
 	stop_webdav();
-#else
-	if(f_exists("/opt/etc/init.d/S50aicloud"))
-		system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 
 #ifdef RTCONFIG_USB_PRINTER
@@ -3357,32 +3355,6 @@ void tune_tso(void)
 }
 #endif
 
-int suit_double_quote(const char *output, const char *input, int outsize){
-	char *src = (char *)input;
-	char *dst = (char *)output;
-	char *end = (char *)output + outsize - 1;
-
-	if(src == NULL || dst == NULL || outsize <= 0)
-		return 0;
-
-	for(; *src && dst < end; ++src){
-		if(*src =='"'){
-			if(dst+2 > end)
-				break;
-
-			*dst++ = '\\';
-			*dst++ = *src;
-		}
-		else
-			*dst++ = *src;
-	}
-
-	if(dst <= end)
-		*dst = '\0';
-
-	return dst-output;
-}
-
 #if 0
 #ifdef RTCONFIG_BCMARM
 extern void del_samba_rules(void);
@@ -3400,7 +3372,6 @@ void
 start_samba(void)
 {
 	int acc_num;
-	char cmd[256];
 #if !defined(RTCONFIG_TUXERA_SMBD)
 #if defined(SMP)
 	char cpu_list[4];
@@ -3494,34 +3465,53 @@ start_samba(void)
 		if(!(follow_account->active))
 			continue;
 
-		char char_user[64], char_passwd[64], suit_user[64], suit_passwd[64];
+		char char_user[64], char_passwd[64];
 
 		memset(char_user, 0, 64);
 		ascii_to_char_safe(char_user, follow_account->name, 64);
-		memset(suit_user, 0, 64);
-		suit_double_quote(suit_user, char_user, 64);
 
 		memset(char_passwd, 0, 64);
 		ascii_to_char_safe(char_passwd, follow_account->passwd, 64);
-		memset(suit_passwd, 0, 64);
-		suit_double_quote(suit_passwd, char_passwd, 64);
 
 #if defined(RTCONFIG_SAMBA36X)
-		// use samba-3.6.x_opwrt to replace from samba-3.6.x
-		//snprintf(cmd, sizeof(cmd), "echo -e \"%s\n%s\n\"  |/usr/sbin/smbpasswd -s -a \"%s\"", suit_passwd, suit_passwd, suit_user);
-		snprintf(cmd, sizeof(cmd), "/usr/sbin/smbpasswd \"%s\" \"%s\"", suit_user, suit_passwd);
+		/* Pass user/passwd as separate argv elements via eval(): no shell and
+		 * no string tokenizer, so special chars (backslash, quote, spaces)
+		 * need no escaping and can never break the command into no-op. */
+		eval("/usr/sbin/smbpasswd", char_user, char_passwd);
 #elif defined(RTCONFIG_SAMBA4)
-		snprintf(cmd, sizeof(cmd), "echo -e \"%s\n%s\n\"  |/usr/sbin/smbpasswd -s -a \"%s\"", suit_passwd, suit_passwd, suit_user);
+		{
+			int _pfd[2];
+			if (pipe(_pfd) == 0) {
+				pid_t _pid = fork();
+				if (_pid == 0) {
+					close(_pfd[1]);
+					dup2(_pfd[0], STDIN_FILENO);
+					close(_pfd[0]);
+					execl("/usr/sbin/smbpasswd", "smbpasswd", "-s", "-a", char_user, (char *)NULL);
+					_exit(127);
+				} else if (_pid > 0) {
+					close(_pfd[0]);
+					write(_pfd[1], char_passwd, strlen(char_passwd));
+					write(_pfd[1], "\n", 1);
+					write(_pfd[1], char_passwd, strlen(char_passwd));
+					write(_pfd[1], "\n", 1);
+					close(_pfd[1]);
+					waitpid(_pid, NULL, 0);
+				} else {
+					close(_pfd[0]);
+					close(_pfd[1]);
+				}
+			}
+		}
 #else
-		snprintf(cmd, sizeof(cmd), "smbpasswd \"%s\" \"%s\"", suit_user, suit_passwd);
+		eval("smbpasswd", char_user, char_passwd);
 #endif
-		system(cmd);
 	}
 
 	PMS_FreeAccInfo(&account_list, &group_list);
 #else
 	char *nv, *nvp, *b;
-	char char_user[64], char_passwd[64], suit_user[64], suit_passwd[64];
+	char char_user[64], char_passwd[64];
 	char *tmp_ascii_user, *tmp_ascii_passwd;
 	int i;
 
@@ -3538,8 +3528,6 @@ start_samba(void)
 
 			memset(char_user, 0, 64);
 			ascii_to_char_safe(char_user, tmp_ascii_user, 64);
-			memset(suit_user, 0, 64);
-			str_escape_quotes(suit_user, char_user, 64);
 #ifdef RTCONFIG_NVRAM_ENCRYPT
 			char dec_passwd[64];
 			memset(dec_passwd, 0, sizeof(dec_passwd));
@@ -3553,24 +3541,63 @@ start_samba(void)
 				atee_get_admin_pw(char_passwd, sizeof(char_passwd));
 #endif
 
-			memset(suit_passwd, 0, 64);
-			str_escape_quotes(suit_passwd, char_passwd, 64);
-
 #if defined(RTCONFIG_TUXERA_SMBD)
 			if(st_samba_mode == 2 || st_samba_mode == 4)
 			{
-				snprintf(cmd, sizeof(cmd), "echo \"%s\" |tsmb-passwd -c /etc/smb.conf -s -a \"%s\"", suit_passwd, suit_user);
+				int _pfd[2];
+				if (pipe(_pfd) == 0) {
+					pid_t _pid = fork();
+					if (_pid == 0) {
+						close(_pfd[1]);
+						dup2(_pfd[0], STDIN_FILENO);
+						close(_pfd[0]);
+						execl("/usr/bin/tsmb-passwd", "tsmb-passwd", "-c", "/etc/smb.conf", "-s", "-a", char_user, (char *)NULL);
+						_exit(127);
+					} else if (_pid > 0) {
+						close(_pfd[0]);
+						write(_pfd[1], char_passwd, strlen(char_passwd));
+						write(_pfd[1], "\n", 1);
+						close(_pfd[1]);
+						waitpid(_pid, NULL, 0);
+					} else {
+						close(_pfd[0]);
+						close(_pfd[1]);
+					}
+				}
 			}
 #elif defined(RTCONFIG_SAMBA36X)
-			// use samba-3.6.x_opwrt to replace from samba-3.6.x
-			//snprintf(cmd, sizeof(cmd), "echo -e \"%s\n%s\n\"  |/usr/sbin/smbpasswd -s -a \"%s\"", suit_passwd, suit_passwd, suit_user);
-			snprintf(cmd, sizeof(cmd), "/usr/sbin/smbpasswd \"%s\" \"%s\"", suit_user, suit_passwd);
+			/* Pass user/passwd as separate argv elements via eval(): no shell and
+			 * no string tokenizer, so special chars (backslash, quote, spaces)
+			 * need no escaping and can never break the command into no-op. */
+			eval("/usr/sbin/smbpasswd", char_user, char_passwd);
 #elif defined(RTCONFIG_SAMBA4)
-			snprintf(cmd, sizeof(cmd), "echo -e \"%s\n%s\n\"  |/usr/sbin/smbpasswd -s -a \"%s\"", suit_passwd, suit_passwd, suit_user);
+			{
+				int _pfd[2];
+				if (pipe(_pfd) == 0) {
+					pid_t _pid = fork();
+					if (_pid == 0) {
+						close(_pfd[1]);
+						dup2(_pfd[0], STDIN_FILENO);
+						close(_pfd[0]);
+						execl("/usr/sbin/smbpasswd", "smbpasswd", "-s", "-a", char_user, (char *)NULL);
+						_exit(127);
+					} else if (_pid > 0) {
+						close(_pfd[0]);
+						write(_pfd[1], char_passwd, strlen(char_passwd));
+						write(_pfd[1], "\n", 1);
+						write(_pfd[1], char_passwd, strlen(char_passwd));
+						write(_pfd[1], "\n", 1);
+						close(_pfd[1]);
+						waitpid(_pid, NULL, 0);
+					} else {
+						close(_pfd[0]);
+						close(_pfd[1]);
+					}
+				}
+			}
 #else
-			snprintf(cmd, sizeof(cmd), "smbpasswd \"%s\" \"%s\"", suit_user, suit_passwd);
+			eval("smbpasswd", char_user, char_passwd);
 #endif
-			system(cmd);
 
 			if(++i >= acc_num)
 				break;
@@ -3678,10 +3705,10 @@ void stop_samba(int force)
 
 /*
  * 1. if (dms_dbdir) exist and files.db there, use it
- * 2. find the first and the largest write-able directory in /tmp/mnt
+ * 2. find the largest write-able directory in /tmp/mnt (>256MB, >128MB free)
  * 3. /var/cache/minidlna
  */
-int find_dms_dbdir_candidate(char *dbdir)
+int find_dms_dbdir_candidate(char *dbdir, size_t dbdir_size)
 {
 	disk_info_t *disk_list, *disk_info;
 	partition_info_t *partition_info, *picked;
@@ -3715,7 +3742,7 @@ int find_dms_dbdir_candidate(char *dbdir)
 		}
 	}
 	if(picked && picked->mount_point) {
-		strcpy(dbdir, picked->mount_point);
+		strlcpy(dbdir, picked->mount_point, dbdir_size);
 		found = 1;
 	}
 
@@ -3724,9 +3751,9 @@ int find_dms_dbdir_candidate(char *dbdir)
 	return found;
 }
 
-void find_dms_dbdir(char *dbdir)
+void find_dms_dbdir(char *dbdir, size_t dbdir_size)
 {
-	char dbdir_t[128], dbfile[128];
+	char dbdir_t[PATH_MAX], dbfile[PATH_MAX];
 	int found=0;
 
 	strlcpy(dbdir_t, nvram_safe_get("dms_dbdir"), sizeof(dbdir_t));
@@ -3735,20 +3762,20 @@ void find_dms_dbdir(char *dbdir)
 	if(!strcmp(dbdir_t, nvram_default_get("dms_dbdir"))) {
 		snprintf(dbfile, sizeof(dbfile), "%s/file.db", dbdir_t);
 		if (check_if_file_exist(dbfile)) {
-			strcpy(dbdir, dbdir_t);
+			strlcpy(dbdir, dbdir_t, dbdir_size);
 			found = 1;
 		}
 	}
 
-	/* find the first write-able directory */
-	if(!found && find_dms_dbdir_candidate(dbdir_t)) {
-		sprintf(dbdir, "%s/.minidlna", dbdir_t);
+	/* find the largest write-able directory */
+	if(!found && find_dms_dbdir_candidate(dbdir_t, sizeof(dbdir_t))) {
+		snprintf(dbdir, dbdir_size, "%s/.minidlna", dbdir_t);
 		found = 1;
 	}
 
  	/* use default dir */
 	if(!found)
-		strcpy(dbdir, nvram_default_get("dms_dbdir"));
+		strlcpy(dbdir, nvram_default_get("dms_dbdir"), dbdir_size);
 
 	nvram_set("dms_dbdir", dbdir);
 
@@ -3827,7 +3854,7 @@ void start_dms(void)
 				strdup(nvram_default_get("dms_dir_type_x"));
 
 			memset(dbdir, 0, sizeof(dbdir));
-			find_dms_dbdir(dbdir);
+			find_dms_dbdir(dbdir, sizeof(dbdir));
 
 			if (strlen(dbdir))
 				mkdir_if_none(dbdir);
@@ -3987,12 +4014,22 @@ void force_stop_dms(void)
 #endif
 }
 
+/* mt-daapd.conf treats '#' as a comment start; escape '#' and '\\' */
+static void fputs_daapd_escaped(const char *str, FILE *fp)
+{
+	for (; *str; str++) {
+		if (*str == '#' || *str == '\\')
+			fputc('\\', fp);
+		fputc(*str, fp);
+	}
+}
+
 void
 write_mt_daapd_conf(char *servername)
 {
 	FILE *fp;
 	char dmsdir[PATH_MAX], *ptr;
-	char dbdir[128], dbdir_t[128];
+	char dbdir[PATH_MAX], dbdir_t[PATH_MAX];
 
 	if (check_if_file_exist("/etc/mt-daapd.conf"))
 		return;
@@ -4026,7 +4063,7 @@ write_mt_daapd_conf(char *servername)
 #endif
 #endif
 	memset(dbdir, 0, sizeof(dbdir));
-	if (find_dms_dbdir_candidate(dbdir_t))
+	if (find_dms_dbdir_candidate(dbdir_t, sizeof(dbdir_t)))
 		snprintf(dbdir, sizeof(dbdir), "%s/.mt-daapd", dbdir_t);
 
 	ptr = strlen(dbdir) ? dbdir : "/var/cache/mt-daapd";
@@ -4034,7 +4071,11 @@ write_mt_daapd_conf(char *servername)
 
 	fprintf(fp, "web_root /etc/web\n");
 	fprintf(fp, "port 3689\n");
-	fprintf(fp, "admin_pw %s\n", http_passwd);
+	fprintf(fp, "admin_pw ");
+	fputs_daapd_escaped(http_passwd, fp);
+	fprintf(fp, "\npassword ");
+	fputs_daapd_escaped(http_passwd, fp);
+	fputc('\n', fp);
 	fprintf(fp, "db_dir %s\n", ptr);
 	fprintf(fp, "mp3_dir %s\n", dmsdir);
 	fprintf(fp, "servername %s\n", servername);
@@ -4250,11 +4291,7 @@ void start_webdav(void)	// added by Vanic
 		notify_rc("start_webdav");
 		return;
 	}
-/*
-#ifndef RTCONFIG_WEBDAV
-	system("sh /opt/etc/init.d/S50aicloud scan");
-#else
-*/
+
 	if (nvram_get_int("webdav_aidisk") || nvram_get_int("webdav_proxy"))
 		nvram_set("enable_webdav", "1");
 	else if (!nvram_get_int("webdav_aidisk") && !nvram_get_int("webdav_proxy") && nvram_get_int("enable_webdav"))
@@ -4272,10 +4309,7 @@ ifdef RTCONFIG_TUNNEL
 	start_mastiff();
 #endif*/
 
-#ifndef RTCONFIG_WEBDAV
-	if(f_exists("/opt/etc/init.d/S50aicloud"))
-		system("sh /opt/etc/init.d/S50aicloud scan");
-#else
+#ifdef RTCONFIG_WEBDAV
 	/* WebDav directory */
 	mkdir_if_none("/tmp/lighttpd");
 	mkdir_if_none("/tmp/lighttpd/uploads");
@@ -4321,10 +4355,7 @@ void stop_webdav(void)
 		return;
 	}
 
-#ifndef RTCONFIG_WEBDAV
-	if(f_exists("/opt/etc/init.d/S50aicloud"))
-		system("sh /opt/etc/init.d/S50aicloud scan");
-#else
+#ifdef RTCONFIG_WEBDAV
 	if (pids("lighttpd-monitor")){
 		kill_pidfile_tk("/tmp/lighttpd/lighttpd-monitor.pid");
 		unlink("/tmp/lighttpd/lighttpd-monitor.pid");
@@ -4712,7 +4743,7 @@ int sd_partition_num()
 
 	if ((procpt = fopen("/proc/partitions", "r"))) {
 		while (fgets(line, sizeof(line), procpt)) {
-			if (sscanf(line, " %d %d %d %[^\n ]", &ma, &mi, &sz, ptname) != 4)
+			if (sscanf(line, " %d %d %d %31[^\n ]", &ma, &mi, &sz, ptname) != 4)	/* 31 == sizeof(ptname) - 1 */
 				continue;
 
 			if (!strncmp(ptname, "sd", 2))
@@ -4748,9 +4779,6 @@ void start_nas_services(int force)
 #ifdef RTCONFIG_WEBDAV
 		// webdav still needed if no disk is mounted
 		start_webdav();
-#else
-		if(f_exists("/opt/etc/init.d/S50aicloud"))
-			system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 #ifdef RTCONFIG_SAMBASRV
 		if (nvram_get_int("smbd_master") || nvram_get_int("smbd_wins")) {
@@ -4862,9 +4890,6 @@ void restart_sambaftp(int stop, int start)
 #endif
 #ifdef RTCONFIG_WEBDAV
 		stop_webdav();
-#else
-		if(f_exists("/opt/etc/init.d/S50aicloud"))
-			system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 	}
 
@@ -4881,9 +4906,6 @@ void restart_sambaftp(int stop, int start)
 #endif
 #ifdef RTCONFIG_WEBDAV
 		start_webdav();
-#else
-		if(f_exists("/opt/etc/init.d/S50aicloud"))
-			system("sh /opt/etc/init.d/S50aicloud scan");
 #endif
 	}
 	file_unlock(fd);
@@ -5231,7 +5253,7 @@ static void start_diskformat(char *port_path)
 				dbg("disk_format: check partitions of %s\n", di->device);
 				fseek(fp, SEEK_SET, 0);
 				while (fgets(line, sizeof(line), fp)) {
-					if (sscanf(line, " %*d %*d %*d %[^\n ]", dev) != 1)
+					if (sscanf(line, " %*d %*d %*d %63[^\n ]", dev) != 1)	/* 63 == sizeof(dev) - 1 */
 						continue;
 					if (strncmp(di->device, dev, len))
 						continue;

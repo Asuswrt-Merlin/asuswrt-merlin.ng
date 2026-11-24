@@ -2727,8 +2727,8 @@ FILE *fp = NULL;
 	char err_str2[100] = {0}; \
 	if (hotplug_pid == -1) hotplug_pid = getpid(); \
 	if (!fp) fp = fopen("/tmp/usb_err", "a+"); \
-	sprintf(err_str, fmt, ##args); \
-	sprintf(err_str2, "PID:%d %s", hotplug_pid, err_str); \
+	snprintf(err_str, sizeof(err_str), fmt, ##args); \
+	snprintf(err_str2, sizeof(err_str2), "PID:%d %s", hotplug_pid, err_str); \
 	fwrite(err_str2, strlen(err_str2), 1,  fp); \
 	fflush(fp); \
 } \
@@ -2898,8 +2898,7 @@ static void optimize_block_device(const char *devname)
 #endif
 	int err;
 
-	memset(blkdev, 0, sizeof(blkdev));
-	strcpy(blkdev, devname);
+	strlcpy(blkdev, devname, sizeof(blkdev));
 	for (p = blkdev; *p; ++p) {
 		if (!isdigit(*p))
 			continue;
@@ -4435,6 +4434,38 @@ static int find_supported_usb_device(int port_num)
 	return c;
 }
 
+#if defined(RTCONFIG_USB_MODEM) && defined(RTCONFIG_HND_ROUTER)
+/* A multi-interface modem fires one hotplug event per interface, each with
+ * the same vid/pid. Serialize on a vid/pid-scoped lock and skip the echo if
+ * this interface is already bound to a driver (native option id_table match,
+ * or another interface already registered it) or another interface already
+ * registered it dynamically, so only one of them writes to option1/new_id.
+ */
+static void option_add_new_id_once(const char *device_name, const unsigned int vid, const unsigned int pid)
+{
+	char driver_path[PATH_MAX];
+	char lock_tag[48], match_id[16], cur_ids[512], buf[16];
+	int lockfd;
+
+	snprintf(driver_path, sizeof(driver_path), "%s/%s/driver", USB_DEVICE_PATH, device_name);
+	if(check_if_dir_exist(driver_path))	// already bound, e.g. matched the native id_table.
+		return;
+
+	snprintf(lock_tag, sizeof(lock_tag), "option_newid_%04x_%04x", vid, pid);
+	if((lockfd = file_lock(lock_tag)) == -1)
+		return;
+
+	snprintf(match_id, sizeof(match_id), "%04x %04x", vid, pid);
+	if(f_read_string("/sys/bus/usb-serial/drivers/option1/new_id", cur_ids, sizeof(cur_ids)) <= 0
+			|| !strstr(cur_ids, match_id)){
+		snprintf(buf, sizeof(buf), "%x %x", vid, pid);
+		f_write_string("/sys/bus/usb-serial/drivers/option1/new_id", buf, 0, 0);
+	}
+
+	file_unlock(lockfd);
+}
+#endif
+
 int asus_usb_interface(const char *device_name, const char *action)
 {
 #if defined(RTCONFIG_USB) || defined(RTCONFIG_USB_PRINTER) || defined(RTCONFIG_USB_MODEM)
@@ -4514,7 +4545,7 @@ int asus_usb_interface(const char *device_name, const char *action)
 			nvram_unset(nvram_usb_path);
 		}
 
-		strcpy(device_type, nvram_safe_get(prefix));
+		strlcpy(device_type, nvram_safe_get(prefix), sizeof(device_type));
 
 #ifdef RTCONFIG_USB_MODEM
 		vid = strtoul(nvram_safe_get(strcat_r(prefix, "_vid", tmp)), NULL, 16);
@@ -4894,6 +4925,9 @@ int asus_usb_interface(const char *device_name, const char *action)
 #ifdef RTCONFIG_HND_ROUTER
 		usb_dbg("(%s): Runing option...\n", device_name);
 		modprobe("option");
+#if LINUX_KERNEL_VERSION >= KERNEL_VERSION(2,6,31)
+		option_add_new_id_once(device_name, vid, pid);
+#endif
 #elif LINUX_KERNEL_VERSION >= KERNEL_VERSION(3,4,0)
 		/* 2.6.16+ */
 		eval("insmod", "option");

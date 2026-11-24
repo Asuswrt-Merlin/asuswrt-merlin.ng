@@ -96,6 +96,34 @@ void write_chap_secret(char *file)
 	fclose(fp);
 }
 
+/* Username is embedded in a double-quoted shell string in ip-up. The web UI
+ * check is client-side only, so reject here what stays special inside double
+ * quotes ($, `, ", \) and control characters (a newline would start a new
+ * command). Everything else, including non-ASCII bytes and a single quote,
+ * is harmless inside double quotes and may already exist in the nvram data
+ * (pppd accepts it; the single quote is escaped in chap-secrets). */
+static int is_safe_pptpd_username(const char *s)
+{
+	if (!s || !*s)
+		return 0;
+	for (; *s; s++) {
+		unsigned char c = (unsigned char)*s;
+		if (c < 0x20 || c == 0x7f ||
+		    c == '$' || c == '`' || c == '"' || c == '\\')
+			return 0;
+	}
+	return 1;
+}
+
+static FILE *open_pptpd_file(const char *path)
+{
+	FILE *fp = fopen(path, "w");
+
+	if (!fp)
+		logmessage("PPTPD", "failed to open %s\n", path);
+	return fp;
+}
+
 void start_pptpd(void)
 {
 	FILE *fp;
@@ -105,7 +133,7 @@ void start_pptpd(void)
 		NULL };
 	char *nv, *nvp, *b;
 	char *pptpd_client, *vpn_network, *vpn_netmask;
-	int ret, pptpd_opt, count, port;
+	int ret, pptpd_opt, count, port, rule_idx = 0;
 	char lanip[20] = {0};
 	char lan_ifname[16] = {0};
 #ifdef RTCONFIG_MULTILAN_CFG
@@ -168,7 +196,8 @@ void start_pptpd(void)
 	//cprintf("open options file\n");
 	// Create options file that will be unique to pptpd to avoid interference 
 	// with pppoe and pptp
-	fp = fopen("/tmp/pptpd/options.pptpd", "w");
+	if (!(fp = open_pptpd_file("/tmp/pptpd/options.pptpd")))
+		return;
 	fprintf(fp, "logfile %s\n", "/var/log/pptpd-pppd.log");
 	//fprintf(fp, "debug dump logfd 2 nodetach\n");
 
@@ -247,7 +276,8 @@ void start_pptpd(void)
 	    nvram_invmatch("pptpd_radserver", "") && nvram_invmatch("pptpd_radpass", "")) {
 		mkdir("/tmp/pptpd/radius", 0744);
 
-		fp = fopen("/tmp/pptpd/radius/radiusclient.conf", "w");
+		if (!(fp = open_pptpd_file("/tmp/pptpd/radius/radiusclient.conf")))
+			return;
 		fprintf(fp, "auth_order radius\n"
 			"login_tries 4\n"
 			"login_timeout 60\n"
@@ -266,14 +296,16 @@ void start_pptpd(void)
 			port ? ":" : "", port ? nvram_safe_get("pptpd_acctport") : "");
 		fclose(fp);
 
-		fp = fopen("/tmp/pptpd/radius/servers", "w");
+		if (!(fp = open_pptpd_file("/tmp/pptpd/radius/servers")))
+			return;
 		fprintf(fp, "%s\t%s\n", nvram_get("pptpd_radserver"),
 			nvram_safe_get("pptpd_radpass"));
 		fclose(fp);
 	}
 
 	// Create pptpd.conf options file for pptpd daemon
-	fp = fopen("/tmp/pptpd/pptpd.conf", "w");
+	if (!(fp = open_pptpd_file("/tmp/pptpd/pptpd.conf")))
+		return;
 	fprintf(fp, "localip %s\n"
 		"remoteip %s\n", lanip,
 		nvram_safe_get("pptpd_clients"));
@@ -291,7 +323,8 @@ void start_pptpd(void)
 	run_postconf("pptpd", "/tmp/pptpd/pptpd.conf");
 	// Create ip-up and ip-down scripts that are unique to pptpd to avoid
 	// interference with pppoe and pptp
-	fp = fopen("/tmp/pptpd/ip-up", "w");
+	if (!(fp = open_pptpd_file("/tmp/pptpd/ip-up")))
+		return;
 	fprintf(fp, "#!/bin/sh\n"
 		"startservice set_routes\n"	// reinitialize
 		"echo \"$PPPD_PID $1 $5 $6 $PEERNAME\" >> /tmp/pptp_connected\n");
@@ -313,12 +346,27 @@ void start_pptpd(void)
 				continue;
 			if (*pptpd_client == '\0' || *vpn_network == '\0')
 				continue;
+			rule_idx++;
+			/* These values are written into a root-run shell script; reject anything unsafe */
+			/* Do not log the rejected value: it is untrusted (may hold control chars) and may be PII */
+			if (!is_safe_pptpd_username(pptpd_client)) {
+				logmessage("PPTPD", "skip static route entry #%d in pptpd_sr_rulelist: invalid username", rule_idx);
+				continue;
+			}
+			if (illegal_ipv4_address(vpn_network)) {
+				logmessage("PPTPD", "skip static route entry #%d in pptpd_sr_rulelist: invalid network", rule_idx);
+				continue;
+			}
 			if (!strcmp(vpn_network, lanip)) {
 				dbg("[%s, %d] static route host ip can't be the same as lan ip, router will crash!\n", __FUNCTION__, __LINE__);
 				continue;
 			}
 			if (*vpn_netmask == '\0')
 				vpn_netmask = "255.255.255.255";
+			else if (illegal_ipv4_netmask(vpn_netmask)) {
+				logmessage("PPTPD", "skip static route entry #%d in pptpd_sr_rulelist: invalid netmask", rule_idx);
+				continue;
+			}
 			fprintf(fp, "if [ \"$PEERNAME\" = \"%s\" ]; then\n", pptpd_client);
 			fprintf(fp, "route del -net %s netmask %s\n", vpn_network, vpn_netmask);
 			fprintf(fp, "route add -net %s netmask %s dev $1\n", vpn_network, vpn_netmask);
@@ -331,7 +379,8 @@ void start_pptpd(void)
 
 	fclose(fp);
 
-	fp = fopen("/tmp/pptpd/ip-down", "w");
+	if (!(fp = open_pptpd_file("/tmp/pptpd/ip-down")))
+		return;
 	fprintf(fp, "#!/bin/sh\n"
 		"sed -i \"/$1/d\" /tmp/pptp_connected\n");
 #ifdef CONFIG_BCMWL5

@@ -2712,13 +2712,25 @@ stop_wan_if(int unit)
 	if(unit < WAN_UNIT_MAX && unit > WAN_UNIT_NONE) //GENERIC WAN
 #endif
 	{
-#ifdef RTCONFIG_OPENVPN
-	stop_ovpn_eas();
+#if (defined(RTCONFIG_OPENVPN) && !defined(RTCONFIG_VPN_FUSION)) || defined(RTCONFIG_VPNC)
+	/* Stop VPN clients only when the active WAN goes down, e.g. not when a backup USB WAN
+	 * is removed. wan_up() of any WAN restarts them. VPN servers keep running. */
+	int stop_vpn_client = (unit == wan_primary_ifunit());
+#ifdef RTCONFIG_DUALWAN
+	if (nvram_match("wans_mode", "lb"))
+		stop_vpn_client = 0;
+#endif
+
+#if defined(RTCONFIG_OPENVPN) && !defined(RTCONFIG_VPN_FUSION)
+	if (stop_vpn_client)
+		stop_ovpn_clientall();
 #endif
 
 #ifdef RTCONFIG_VPNC
 	/* Stop VPN client */
-	stop_vpnc();
+	if (stop_vpn_client)
+		stop_vpnc();
+#endif
 #endif
 	}
 
@@ -4354,6 +4366,14 @@ NOIP:
 #endif
 			)
 	{
+#ifdef RTCONFIG_VPNC
+#if defined(RTCONFIG_VPN_FUSION) && !defined(RTCONFIG_VPN_FUSION_MERLIN)
+		start_vpnc();
+#else
+		if((nvram_match("vpnc_proto", "pptp") || nvram_match("vpnc_proto", "l2tp")) && nvram_match("vpnc_auto_conn", "1"))
+			start_vpnc();
+#endif
+#endif
 
 		/* ntp is set, but it didn't just get set, so ntp_synced didn't already did these */
 		if (nvram_get_int("ntp_ready") && !first_ntp_sync) {
@@ -4368,7 +4388,12 @@ NOIP:
 			start_ddns(NULL, 0);
 		}
 #ifdef RTCONFIG_WIREGUARD
-		reload_wgs_ip_rule();
+#if defined(RTCONFIG_VPN_FUSION_MERLIN) || !defined(RTCONFIG_VPN_FUSION)
+		stop_wgcall();
+		start_wgcall();
+#endif
+		stop_wgsall();
+		start_wgsall();
 #endif
 #ifdef RTCONFIG_TR069
                if(wan_unit == 0 ){
@@ -5594,7 +5619,7 @@ void convert_wan_nvram(char *prefix, int unit)
 			if (base_unit)
 				ether_atoe(nvram_safe_get("wl1_hwaddr"), eabuf);
 			else
-				ether_atoe(nvram_safe_get("wl0_hwaddr"), eabuf);
+				ether_atoe(get_lan_hwaddr(), eabuf);
 #endif
 		}
 		ether_inc(eabuf, ms_idx);
@@ -5635,11 +5660,14 @@ void dumparptable()
 	mac_num = 0;
 
 	while (fgets(buf, 256, fp) && (mac_num < MAX_MAC_NUM - 2)) {
-		sscanf(buf, "%s %s %s %s %s %s", ip_entry, hw_type, flags, hw_address, mask, device);
+		/* Widths must stay in sync with the buffer sizes above (sizeof - 1). */
+		/* Skip the header and short lines so no field is left uninitialized or stale. */
+		if (sscanf(buf, "%31s %7s %7s %31s %31s %7s", ip_entry, hw_type, flags, hw_address, mask, device) != 6)
+			continue;
 
 		if (!strcmp(device, "br0") && strlen(hw_address)!=0)
 		{
-			strcpy(mac_clone[mac_num++], hw_address);
+			strlcpy(mac_clone[mac_num++], hw_address, sizeof(mac_clone[0]));
 		}
 	}
 	fclose(fp);
@@ -5691,7 +5719,6 @@ void init_wan46(void) {
 			else
 				snprintf(prefix, sizeof(prefix), "wan46det%d_", unit);
 			nvram_unset(strcat_r(prefix, "state", tmp));
-			nvram_unset(ipv6_nvname_by_unit("ipv6_s46_perfer", unit));
 			nvram_unset(ipv6_nvname_by_unit("ipv6_ra_addr", unit));
 			nvram_unset(ipv6_nvname_by_unit("ipv6_ra_length", unit));
 			nvram_unset(ipv6_nvname_by_unit("ipv6_prefix", unit));

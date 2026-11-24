@@ -197,7 +197,7 @@ static int show_chip_name(const char *sysfs_path)
 		ret = -errno;
 		printf("Failed to open %s\n", path);
 	} else {
-		if (fscanf(fp, "%s", name) != 1) {
+		if (fscanf(fp, "%255s", name) != 1) {	/* 255 == sizeof(name) - 1 */
 			printf("Failed to read chip name\n");
 			ret = -1;
 		} else
@@ -227,7 +227,7 @@ static int read_sysfs(const char *sysfs_path, const char *attr_name)
 		ret = -errno;
 		printf("Failed to open %s\n", path);
 	} else {
-		if (fscanf(fp, "%s", result) != 1) {
+		if (fscanf(fp, "%255s", result) != 1) {	/* 255 == sizeof(result) - 1 */
 			printf("Failed to read chip name\n");
 			ret = -1;
 		} else
@@ -256,7 +256,7 @@ static int read_sysfs_int(const char *sysfs_path, const char *attr_name, int *va
 		ret = -errno;
 		printf("Failed to open %s\n", path);
 	} else {
-		if (fscanf(fp, "%s", result) != 1) {
+		if (fscanf(fp, "%255s", result) != 1) {	/* 255 == sizeof(result) - 1 */
 			printf("Failed to read chip name\n");
 			ret = -1;
 		} else {

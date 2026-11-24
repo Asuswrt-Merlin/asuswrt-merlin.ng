@@ -574,8 +574,23 @@ function apply_eula_check(){
         });
 }
 
+function confirm_ddns_disable_for_vpn(){
+	//prompt once per apply, only on the enabled -> disabled transition
+	if(ddns_enable_x != "1" || document.form.ddns_enable_x.value != "0")
+		return true;
+
+	//the Endpoint mode is not checked, Auto may also end up picking the system DDNS
+	if(httpApi.nvramGet(["wgs_enable"], true).wgs_enable != "1")
+		return true;
+
+	return confirm(stringSafeGet(`<#vpn_wireguard_ep_ddns_disable_confirm#>`));
+}
+
 function applyRule(){
 	if(validForm()){
+		if(!confirm_ddns_disable_for_vpn())
+			return false;
+
 		if(document.form.ddns_enable_x.value == "1" && (document.form.ddns_server_x.value.indexOf("WWW.ASUS.COM") != -1)){
 			document.form.ddns_hostname_x.value = document.form.DDNSName.value+$("#domain_text").text();
 		}
@@ -910,7 +925,7 @@ function change_ddns_setting(v){
 			if(v == "WWW.TUNNELBROKER.NET" || v == "DNS.HE.NET" || v == "WWW.SELFHOST.DE" || v == "DOMAINS.GOOGLE.COM" || v == "DYNU.COM" || v == "CLOUDFLARE.COM")
 			inputCtrl(document.form.ddns_passwd_x, 1);
 			var disable_wild = 0;
-			if(v == "WWW.TUNNELBROKER.NET" || v == "DNS.HE.NET" || v == "WWW.SELFHOST.DE" || v == "DOMAINS.GOOGLE.COM" || v == "DYNU.COM" || v == "CLOUDFLARE.COM" || v == "PUBYUN.COM")
+			if(v == "WWW.TUNNELBROKER.NET" || v == "DNS.HE.NET" || v == "WWW.SELFHOST.DE" || v == "DOMAINS.GOOGLE.COM" || v == "DYNU.COM" || v == "CLOUDFLARE.COM" || v == "PUBYUN.COM" || v == "DUCKDNS.ORG")
 				var disable_wild = 1;
 			else
 				var disable_wild = 0;
@@ -1358,6 +1373,8 @@ function clear_cert_key(){
 						<option value="FREEDNS.AFRAID.ORG" <% nvram_match("ddns_server_x", "FREEDNS.AFRAID.ORG","selected"); %>>FREEDNS.AFRAID.ORG</option>
 						<option value="FREEMYIP.COM" <% nvram_match("ddns_server_x", "FREEMYIP.COM","selected"); %>>FREEMYIP.COM</option>
 						<option value="DEDYN.IO" <% nvram_match("ddns_server_x", "DEDYN.IO","selected"); %>>DEDYN.IO</option>
+						<option value="DUCKDNS.ORG" <% nvram_match("ddns_server_x", "DUCKDNS.ORG","selected"); %>>DUCKDNS.ORG</option>
+						<option value="DNSPOD.CN" <% nvram_match("ddns_server_x", "DNSPOD.CN","selected"); %>>DNSPOD.CN</option>
 						<option value="CUSTOM" <% nvram_match("ddns_server_x", "CUSTOM","selected");  %>>Custom</option>
 					</select>
 					<input id="deregister_btn" class="button_gen" style="display: none; margin-left: 5px;" type="button" value="<#CTL_Deregister#>"/>
@@ -1390,7 +1407,7 @@ function clear_cert_key(){
 			</tr>
 			<tr>
 				<th id="ddns_username_title"><#LANHostConfig_x_DDNSUserName_itemname#></th>
-				<td><input type="text" maxlength="32" class="input_25_table" name="ddns_username_x" value="<% nvram_get("ddns_username_x"); %>" onKeyPress="return validator.isString(this, event)" autocomplete="off" autocorrect="off" autocapitalize="off"></td>
+				<td><input type="text" maxlength="64" class="input_25_table" name="ddns_username_x" value="<% nvram_get("ddns_username_x"); %>" onKeyPress="return validator.isString(this, event)" autocomplete="off" autocorrect="off" autocapitalize="off"></td>
 			</tr>
 			<tr>
 				<th id="ddns_password_th"><#LANHostConfig_x_DDNSPassword_itemname#></th>

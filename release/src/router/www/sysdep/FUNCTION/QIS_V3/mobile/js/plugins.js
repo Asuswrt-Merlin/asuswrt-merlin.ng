@@ -333,6 +333,11 @@ function getAiMeshOnboardinglist(_onboardingList){
 			node_info.type = newReMacArray[newReMac].type;
 			node_info.cobrand = httpApi.aimesh_get_misc_info(newReMacArray[newReMac]).cobrand;
 			node_info.misc_info = newReMacArray[newReMac].misc_info;
+			// Preserve advertised metadata; do not manufacture support for older hooks.
+			if(newReMacArray[newReMac].capability != undefined)
+				node_info.capability = newReMacArray[newReMac].capability;
+			if(newReMacArray[newReMac].od_mode != undefined)
+				node_info.od_mode = newReMacArray[newReMac].od_mode;
 			jsonArray.push(node_info);
 		});
 	});
@@ -1316,11 +1321,31 @@ function isEmpty(obj)
 	return true;
 }
 
+function loadAmasOnboardingPage(){
+	var $page = $("#amasonboarding_page");
+	var request = $page.data("amasOnboardingLoad");
+	if(request) return request;
+
+	var loaded = $.Deferred();
+	request = loaded.promise();
+	$page.data("amasOnboardingLoad", request);
+	$page.load("/mobile/pages/amasonboarding_page.html", function(response, status){
+		if(status != "error" && $page.find("#controlBtn_apply").length && typeof amas_location_select_show == "function"){
+			loaded.resolve();
+		}
+		else{
+			$page.removeData("amasOnboardingLoad");
+			loaded.reject();
+		}
+	});
+	return request;
+}
+
 function installPages(flag){
 	switch(flag){
 		case "amasAddNodePages":
 			$("#amassearch_page").load("/mobile/pages/amassearch_page.html");
-			$("#amasonboarding_page").load("/mobile/pages/amasonboarding_page.html");
+			loadAmasOnboardingPage();
 		break;
 	}
 }
@@ -1366,7 +1391,7 @@ function handleSysDep(){
 	if(!isSupport("amas")) $(".amasSupport").remove();
 	if(isSupport("amas") && isSupport("amas_bdl")){
 		$("#amassearch_page").load("/mobile/pages/amassearch_page.html");
-		$("#amasonboarding_page").load("/mobile/pages/amasonboarding_page.html");
+		loadAmasOnboardingPage();
 	}
 
 	if(isSupport("prelink") && amas_bdl_num > 2){

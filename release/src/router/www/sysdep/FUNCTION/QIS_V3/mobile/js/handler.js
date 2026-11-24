@@ -1425,6 +1425,10 @@ apply.submitQIS = function(){
 }
 
 apply.update = function(){
+	// the upgrade request is sent after a delay, so repeated clicks would start it more than once
+	if(systemVariable.upgradeStarting) return;
+	systemVariable.upgradeStarting = true;
+
 	$(".btn_upgrade_apply").html(Get_Component_btnLoading);
 
 	setTimeout(function(){
@@ -1527,16 +1531,80 @@ apply.USBBackup = function(){
 	goTo.PhoneAsWAN();
 };
 
+function isOutdoorLocation(location){
+	return popup_hint_api.is_outdoor_location(location);
+}
+
+function isOnboardingOutdoorSupported(node){
+	return !!node && httpApi.aimesh_od_model_list.indexOf(node.name) != -1;
+}
+
+apply.amasonboardingWithConfig = function(){
+	if(!(getSupportNum("ob_cfg") > 0)) return apply.amasonboarding();
+
+	var location = (typeof amas_location_select_get == "function") ? amas_location_select_get() : "";
+	if(location === null){
+		$("#amasonboarding_page").find("#input_location").focus();
+		return false;
+	}
+	var onboardingInfo = systemVariable.onboardingInfo || {};
+	var mac = onboardingInfo.mac;
+	if(!mac || !location || typeof amas_location_select_begin != "function") return false;
+	var token = amas_location_select_begin();
+	if(token === null) return false;
+	var isNewOb = (onboardingInfo.is_newob == true && isSupport("AMAS_NEWOB")) ? true : false;
+	var ob_cfg = {};
+	if(isOnboardingOutdoorSupported(onboardingInfo))
+		ob_cfg.od_mode = amas_location_select_is_outdoor() ? "1" : "0";
+	if(location != "")
+		ob_cfg.cfg_alias = location;
+
+	var $page = $("#amasonboarding_page");
+	$page.find(".onboarding_config_error").hide().text("");
+	$page.find("#controlBtn_apply").hide();
+	var completed = false;
+	httpApi.setNewObConfig(mac, ob_cfg, function(success){
+		if(completed) return;
+		completed = true;
+		if(systemVariable.onboardingInfo !== onboardingInfo || onboardingInfo.mac != mac ||
+			!amas_location_select_finish(token, !success)) return;
+		if(!success){
+			$page.find(".onboarding_config_error").text("<#ConnectionFailed#>").show();
+			$page.find("#controlBtn_apply").show();
+			return;
+		}
+		// Reuse the CAP wireless apply/wait/search path for outdoor onboarding.
+		if(systemVariable.amas_newWindow_addNode === true && ob_cfg.od_mode === "1" &&
+			httpApi.aimesh_is_local_od_model() && httpApi.aimesh_is_local_support_od_mode() &&
+			httpApi.nvramGet(["od_mode"], true).od_mode != "1"){
+			systemVariable.authModePostData.od_mode = "1";
+		}
+		apply.amasonboarding();
+	}, isNewOb);
+};
+
 apply.amasonboarding = function(){
+	var onboardingInfo = systemVariable.onboardingInfo;
+	var onboardingMac = onboardingInfo.mac;
+	var onboardingContext = systemVariable.amasLocationContext;
+	var hasLocationContext = onboardingContext && onboardingContext.node === onboardingInfo &&
+		typeof amas_location_select_finish == "function";
+	function is_current_onboarding(){
+		return isPage("amasonboarding_page") && systemVariable.onboardingInfo === onboardingInfo &&
+			onboardingInfo.mac === onboardingMac && (!hasLocationContext || amas_location_select_finish(onboardingContext, false));
+	}
+	if(!is_current_onboarding()) return false;
 	var onboardingSearch = function(){
+		if(!is_current_onboarding()) return;
 		httpApi.nvramSet({"action_mode": "onboarding"})
 
 		setTimeout(function(){
+			if(!is_current_onboarding()) return;
 			var obList = getAiMeshOnboardinglist(httpApi.hookGet("get_onboardinglist", true));
 			var got = false;
 
 			obList.forEach(function(nodeInfo){
-				if(nodeInfo.mac == systemVariable.onboardingInfo.mac){
+				if(nodeInfo.mac == onboardingInfo.mac){
 					got = true;
 					onboardingCmd(nodeInfo.pap_mac, nodeInfo.mac, nodeInfo.source);
 				}
@@ -1549,12 +1617,14 @@ apply.amasonboarding = function(){
 	}
 
 	var onboardingCmd = function(pap_Mac, re_Mac, source){
+		if(!is_current_onboarding()) return;
 		httpApi.nvramSet({
 			"action_mode": "ob_selection", 
 			"new_re_mac": re_Mac, 
 			"ob_path": source
 		}, function(){
 			setTimeout(function(){
+				if(!is_current_onboarding()) return;
 				httpApi.nvramSet({
 					"action_mode": "onboarding",
 					"re_mac": pap_Mac,
@@ -1570,11 +1640,12 @@ apply.amasonboarding = function(){
 		systemVariable.authModePostData.rc_service = "restart_wireless";
 
 		httpApi.nvramSet(systemVariable.authModePostData, function(){
+			if(!is_current_onboarding()) return;
 			setTimeout(onboardingSearch, 10000)
 		})
 	}
 	else{
-		onboardingCmd(systemVariable.onboardingInfo.pap_mac, systemVariable.onboardingInfo.mac, systemVariable.onboardingInfo.source);
+		onboardingCmd(onboardingInfo.pap_mac, onboardingInfo.mac, onboardingInfo.source);
 	}
 
 	$("#amasonboarding_page").find(".onboarding_unit").hide();
@@ -1588,10 +1659,14 @@ apply.amasonboarding = function(){
 	let cfg_obstart = "";
 	let cfg_obtimeout = "";
 	let extend_obtimeout_flag = false;
-	systemVariable.interval_status = setInterval(function(){
+	var onboardingInterval = setInterval(function(){
+		if(!is_current_onboarding()){
+			clearInterval(onboardingInterval);
+			return;
+		}
 		const get_onboardingstatus = httpApi.hookGet("get_onboardingstatus", true);
 		const get_cfg_clientlist = httpApi.hookGet("get_cfg_clientlist", true);
-		const specific_node = get_cfg_clientlist.find(item => item.mac === systemVariable.onboardingInfo.mac);
+		const specific_node = get_cfg_clientlist.find(item => item.mac === onboardingInfo.mac);
 		const cfg_obstatus = get_onboardingstatus.cfg_obstatus;
 		let cfg_obresult = get_onboardingstatus.cfg_obresult;
 		const node_online = specific_node?.online || "0";
@@ -1617,9 +1692,9 @@ apply.amasonboarding = function(){
 				onboardingDone = true;
 				$("#amasonboarding_page").find(".onboarding_unit").hide();
 				$("#amasonboarding_page").find("#controlBtn_result").show();
-				var _model_name = systemVariable.onboardingInfo.name;
-				var _ui_model_name = systemVariable.onboardingInfo.ui_model_name;
-				var _newReMac = systemVariable.onboardingInfo.mac;
+				var _model_name = onboardingInfo.name;
+				var _ui_model_name = onboardingInfo.ui_model_name;
+				var _newReMac = onboardingInfo.mac;
 				var labelMac = _newReMac;
 				httpApi.getAiMeshLabelMac(_model_name, _newReMac,
 					function(_callBackMac){
@@ -1704,6 +1779,7 @@ apply.amasonboarding = function(){
 		if(onboardingDone || !isPage("amasonboarding_page"))
 			clearIntervalStatus();
 	}, 1000);
+	systemVariable.interval_status = onboardingInterval;
 }
 
 apply.site2site = function(){
@@ -5261,7 +5337,45 @@ goTo.TMToS = function(){
 	goTo.loadPage("tmtos_page", false);
 };
 
+var qisPendingPage = null;	/* page a transition is currently heading to */
+var qisPendingAt = 0;
+$(document).on("pagechange pagechangefailed", function(){ qisPendingPage = null; });
+/* A click that arrives while the page is already on its way somewhere is a
+ * repeat of the click that started it: drop it before its onclick runs, so
+ * the action (and any synchronous request it makes) is not run again. The
+ * time limit keeps a transition that never reports back from eating clicks. */
+document.addEventListener("click", function(e){
+	if(qisPendingPage && Date.now() - qisPendingAt < 1000){
+		/* also stops the Previous-button listener below, which sits on the same node */
+		e.stopImmediatePropagation();
+		e.preventDefault();
+	}
+}, true);
+
+/* "Previous" does not always go through goTo.loadPage() synchronously (it may
+ * wait for a request, or call window.history.back()), so the pending page
+ * above cannot cover it. Drop a repeated click on the same page's Previous
+ * button within 1 second instead. */
+var qisLastAbort = {page: null, at: 0};
+document.addEventListener("click", function(e){
+	if(!e.target.closest || !e.target.closest(".desktop_abortBtn, .mobileAbort"))
+		return;
+	var page = $(".ui-page-active").attr("id");
+	if(qisLastAbort.page === page && Date.now() - qisLastAbort.at < 1000){
+		e.stopPropagation();
+		e.preventDefault();
+		return;
+	}
+	qisLastAbort = {page: page, at: Date.now()};
+}, true);
+
 goTo.loadPage = function(page, _reverse, _transition){
+	/* The same page is already being opened by an earlier call. */
+	if(!_reverse && qisPendingPage === page)
+		return;
+	qisPendingPage = page;
+	qisPendingAt = Date.now();
+
 	window.scrollTo({top: 0});
 
 	var last_page = systemVariable.historyPage.slice(-1)[0];
@@ -5270,7 +5384,7 @@ goTo.loadPage = function(page, _reverse, _transition){
 		transition_type = _transition;
 	if(_reverse)
 		systemVariable.historyPage.pop();
-	else
+	else if(last_page != page)
 		systemVariable.historyPage.push(page);
 
 	var $obj = $("#"+page);
@@ -5441,7 +5555,7 @@ goTo.WANOption = function(){
 
 goTo.amasbundle = function(){
 	$("#amassearch_page").load("/mobile/pages/amassearch_page.html");
-	$("#amasonboarding_page").load("/mobile/pages/amasonboarding_page.html");
+	loadAmasOnboardingPage();
 	var interval = setInterval(function(){
 		if(httpApi.hookGet("get_onboardingstatus", true).cfg_ready == "1"){
 			if(httpApi.hookGet("get_onboardingstatus", true).cfg_obstatus == "1")
@@ -5616,12 +5730,26 @@ goTo.amassearch = function(){
 };
 
 goTo.amasOnboarding = function(){
+	var $page = $("#amasonboarding_page");
+	if(!$page.find("#controlBtn_apply").length || typeof amas_location_select_show != "function"){
+		var onboardingInfo = systemVariable.onboardingInfo;
+		var selectionIsCurrent = function(){
+			return systemVariable.onboardingInfo === onboardingInfo && isPage("amassearch_page");
+		};
+		loadAmasOnboardingPage().done(function(){
+			if(selectionIsCurrent()) goTo.amasOnboarding();
+		}).fail(function(){
+			if(selectionIsCurrent()) alert("<#ConnectionFailed#>");
+		});
+		return;
+	}
 	clearIntervalStatus();
 	httpApi.nvramSet({"action_mode": "ob_selection", "new_re_mac": systemVariable.onboardingInfo.mac, "ob_path": systemVariable.onboardingInfo.source});
 	var get_onboardingstatus = httpApi.hookGet("get_onboardingstatus", true);
 
 	/* init */
 	$("#amasonboarding_page").find(".onboarding_unit").hide();
+	$("#amasonboarding_page").find(".onboarding_config_error").hide().text("");
 	$("#amasonboarding_page").find("#title").show();
 
 	if(systemVariable.modelCloudIcon[systemVariable.onboardingInfo.cloudModelName])
@@ -5642,8 +5770,10 @@ goTo.amasOnboarding = function(){
 		$("#amasonboarding_page").find("#weak").show();
 		$("#amasonboarding_page").find("#controlBtn_result").show();
 	}
-	else
+	else{
+		if(getSupportNum("ob_cfg") > 0) amas_location_select_show();
 		$("#amasonboarding_page").find("#controlBtn_apply").show();
+	}
 
 	if($("#amasonboarding_page").find("#weak").css("display") == "none"){
 		systemVariable.authModePostData = {};

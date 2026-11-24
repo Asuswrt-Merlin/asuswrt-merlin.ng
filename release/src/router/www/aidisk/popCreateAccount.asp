@@ -9,6 +9,7 @@
 <title>Add New Account</title>
 <link rel="stylesheet" href="../form_style.css"  type="text/css">
 
+<script type="text/javascript" src="../js/jquery.js"></script>
 <script type="text/javascript" src="../state.js"></script>
 <script type="text/javascript" src="../help.js"></script>
 <script type="text/javascript" src="../validator.js"></script>

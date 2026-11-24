@@ -217,24 +217,23 @@ function show_feature_desc(_text1, _text2, _text3){
       var href_index3 = get_faq_index(FAQ_List, current_page, 3);
     }
 
+    function get_faq_text(text, index){
+      var content = '<span>'+text+'</span>';
+      if(/^[1-9][0-9]*$/.test(String(index))){
+        content = '<a id="link_info_faq" target="_blank" href="https://nw-dlcdnet.asus.com/support/forward.html?model=&type=Faq&lang='+ui_lang+'&kw=&num='+index+'">'+text+'</a>';
+      }
+      return '<div class="text-list"><div class="icon-circle-mask"><i class="icon-comments"></i></div>'+content+'</div>';
+    }
+
     var faq_text = "";
     if(_text1){
-      faq_text += '<div class="text-list"><div class="icon-circle-mask"><i class="icon-comments"></i></div><a id="link_info_faq" target="_blank" href="https://nw-dlcdnet.asus.com/support/forward.html?model=&type=Faq&lang='+ui_lang;
-      faq_text += '&kw=&num='+href_index+'">';
-      faq_text += _text1;
-      faq_text += '</a></div>';
+      faq_text += get_faq_text(_text1, href_index);
     }
     if(_text2){
-      faq_text += '<div class="text-list"><div class="icon-circle-mask"><i class="icon-comments"></i></div><a id="link_info_faq" target="_blank" href="https://nw-dlcdnet.asus.com/support/forward.html?model=&type=Faq&lang='+ui_lang;
-      faq_text += '&kw=&num='+href_index2+'">';
-      faq_text += _text2;
-      faq_text += "</a></div>";
+      faq_text += get_faq_text(_text2, href_index2);
     }
     if(_text3){
-      faq_text += '<div class="text-list"><div class="icon-circle-mask"><i class="icon-comments"></i></div><a id="link_info_faq" target="_blank" href="https://nw-dlcdnet.asus.com/support/forward.html?model=&type=Faq&lang='+ui_lang;
-      faq_text += '&kw=&num='+href_index3+'">';
-      faq_text += _text3;
-      faq_text += "</a></div>";
+      faq_text += get_faq_text(_text3, href_index3);
     }
 
     var $container = $("<div>");

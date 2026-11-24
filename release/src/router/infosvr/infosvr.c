@@ -72,6 +72,7 @@ int cfg_groupid_is_null;
 #define ID_LEN		20
 char* gen_vsie_id(int, size_t *);
 #include <time.h>
+#include <encrypt.h>	/* gen_random_ts() */
 int str2hex(const char *, unsigned char *, size_t);
 #endif
 
@@ -84,7 +85,9 @@ void load_sysparam(void)
 #if defined(RTCONFIG_AMAS)
 	char *tmp = NULL;
 	size_t cfg_group_len = 0;
-	int ts = time((time_t *)NULL);
+	int ts;
+
+	ts = gen_random_ts();
 #endif
 	get_discovery_ssid(ssid_g, sizeof(ssid_g));
 	strncpy(netmask_g, nvram_safe_get("lan_netmask"), sizeof(netmask_g));

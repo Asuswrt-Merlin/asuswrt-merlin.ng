@@ -111,7 +111,7 @@ int is_no_partition(const char *discname)
 
 	if ((procpt = fopen("/proc/partitions", "r"))) {
 		while (fgets(line, sizeof(line), procpt)) {
-			if (sscanf(line, " %d %d %d %[^\n ]", &ma, &mi, &sz, ptname) != 4)
+			if (sscanf(line, " %d %d %d %31[^\n ]", &ma, &mi, &sz, ptname) != 4)	/* 31 == sizeof(ptname) - 1 */
 				continue;
 			if (strstr(ptname, discname))
 				count++;
@@ -194,13 +194,16 @@ int exec_for_host(int host, int obsolete, uint flags, host_exec func)
 		}
 		if (host >= 0 && host != host_no)
 			continue;
-		snprintf(dsname, sizeof(dsname), dp->d_name);
+		/* Skip names that do not fit; a truncated name could match the wrong disk. */
+		if (strlen(dp->d_name) >= sizeof(dsname))
+			continue;
+		strcpy(dsname, dp->d_name);
 		siz = strlen(dsname);
 		flags |= EFH_1ST_DISC;
 		if (!(prt_fp = fopen("/proc/partitions", "r")))
 			continue;
 		while (fgets(line, sizeof(line) - 2, prt_fp)) {
-			if (sscanf(line, " %*s %*s %*s %s", ptname) != 1)
+			if (sscanf(line, " %*s %*s %*s %31s", ptname) != 1)	/* 31 == sizeof(ptname) - 1 */
 				continue;
 
 			if (!strncmp(ptname, dsname, siz)) {
@@ -249,7 +252,7 @@ int exec_for_host(int host, int obsolete, uint flags, host_exec func)
 			flags |= EFH_1ST_DISC;
 			if (func && (prt_fp = fopen("/proc/partitions", "r"))) {
 				while (fgets(line, sizeof(line) - 2, prt_fp)) {
-					if (sscanf(line, " %*s %*s %*s %s", bfr2) == 1 &&
+					if (sscanf(line, " %*s %*s %*s %127s", bfr2) == 1 &&	/* 127 == sizeof(bfr2) - 1 */
 					    strncmp(bfr2, mp, siz) == 0)
 					{
 						if ((cp = strstr(bfr2, "/part"))) {

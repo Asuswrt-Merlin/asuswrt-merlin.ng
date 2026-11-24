@@ -234,6 +234,34 @@ ca_main_loop(ca_wksp_t *cwksp)
 		exit(errno);
 	}
 
+	/*
+	 * daemon() forks: any wlcsm netlink socket already bound to our
+	 * pre-fork pid (e.g. via an nvram_safe_get()/nvram_get() call in
+	 * ca_wksp_init() above, which routes through libwlcsm) is now stale
+	 * -- it stays open (fork() duplicates fds) but is bound to a pid
+	 * that no longer identifies this process. wlcsm_init() only
+	 * re-binds it to the new pid the *next* time a wlcsm netlink API is
+	 * called, and this daemon's main loop never calls one again, so
+	 * without this explicit call that stale, wrong-pid socket would be
+	 * held open for the lifetime of the daemon (observed on-device as
+	 * a "PRE-LEAK / INHERITANCE SUSPECT" finding for ceventd). Call it
+	 * here, right after daemon(), to force the re-bind immediately.
+	 *
+	 * NOTE: call _wlcsm_init(g_WLCSM_IS_DAEMON) rather than the public
+	 * wlcsm_init() wrapper -- wlcsm_init() hardcodes m_AS_DAEMON, which
+	 * marks this process as the wlcsm/nvram *sync daemon* and makes it
+	 * stand up an extra multicast notify socket plus a listening
+	 * thread it has no business owning. ceventd is an ordinary wlcsm
+	 * client, so it must re-init with whatever isdaemon value it
+	 * already had (g_WLCSM_IS_DAEMON, m_NOTAS_DAEMON by default),
+	 * exactly like the lazy WLCSM_NL_INITIALIZE() path used elsewhere.
+	 */
+	{
+		extern int _wlcsm_init(int isdaemon);
+		extern int g_WLCSM_IS_DAEMON;
+		_wlcsm_init(g_WLCSM_IS_DAEMON);
+	}
+
 	pid_fp = fopen(CEVENTD_PID_FILE, "w");
 
 	if (pid_fp != NULL) {

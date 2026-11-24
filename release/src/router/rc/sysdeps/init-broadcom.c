@@ -2248,6 +2248,33 @@ void init_switch_pre()
 	system("ethswctl -c pause -p 10 -v 2");
 #endif
 
+	/* Set pause mode for switch ports parsed from "ethctl phy-map".
+	 * Each ethX/<IntnlDev> line reports its switch port as "IntSw:P<n>", e.g.
+	 *   "eth0      : Up ... IntSw:P6 ..." => eth0 maps to port 6,
+	 *   "<IntnlDev>: Up ... IntSw:P8 ..." => internal device maps to port 8.
+	 */
+	{
+		FILE *phymap_fp;
+		char phymap_buf[256];
+
+		if ((phymap_fp = popen("ethctl phy-map", "r")) != NULL) {
+			while (fgets(phymap_buf, sizeof(phymap_buf), phymap_fp) != NULL) {
+				char *p;
+
+				if (strncmp(phymap_buf, "eth", strlen("eth")) != 0
+				 && strncmp(phymap_buf, "<IntnlDev>", strlen("<IntnlDev>")) != 0)
+					continue;
+				if ((p = strstr(phymap_buf, "IntSw:P")) != NULL) {
+					int port = atoi(p + strlen("IntSw:P"));
+
+					if (port >= 0)
+						doSystem("ethswctl -c pause -p %d -v 2", port);
+				}
+			}
+			pclose(phymap_fp);
+		}
+	}
+
 	memset(ifnames, 0, sizeof(ifnames));
 	add_to_list("eth0", ifnames, sizeof(ifnames));
 #if !defined(RTAX55) && !defined(RTAX1800) && !defined(RPAX56) && !defined(RPAX58) && !defined(RPBE58) && !defined(RTAX58U_V2) && !defined(RTAX3000N) && !defined(BR63) && !defined(RTBE58U) && !defined(TUFBE3600) && !defined(RTBE58U_V2) && !defined(TUFBE3600_V2) && !defined(RTBE55) && !defined(RTBE92U) && !defined(RTBE95U) && !defined(RTBE82U) && !defined(TUFBE82) && !defined(RTBE82M) && !defined(RTBE58U_PRO) && !defined(GSBE18000) && !defined(GSBE12000) && !defined(GS7_PRO) && !defined(GT7)

@@ -549,6 +549,10 @@ ifeq ($(RTCONFIG_SPEEDTEST),y)
 OBJS += $(if $(wildcard speedtest.c),speedtest.o,prebuild/speedtest.o)
 endif
 
+ifneq ($(filter y,$(RTCONFIG_OOKLA) $(RTCONFIG_OOKLA_LITE)),)
+OBJS += ookla_quota_mon.o
+endif
+
 OBJS += wanduck.o
 OBJS += tcpcheck.o
 
@@ -1210,6 +1214,7 @@ endif
 ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-BE82M GS-BE18000 GS-BE12000 GS7_PRO GT7))
 OBJS += mxlmonitor.o
 endif
+OBJS += cdmonitor.o
 ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),GT7))
 OBJS += ext84991.o
 endif
@@ -1429,6 +1434,7 @@ ifeq ($(RTCONFIG_AUTO_WANPORT),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc autowan
 endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc ddns_updated
+	@cd $(INSTALLDIR)/sbin && ln -sf rc ddns_async
 	@cd $(INSTALLDIR)/sbin && ln -sf rc ddns_custom_updated
 
 #	@cd $(INSTALLDIR)/sbin && ln -sf rc wldist
@@ -1500,6 +1506,7 @@ endif
 ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-BE82M GS-BE18000 GS-BE12000 GS7_PRO GT7))
 	@cd $(INSTALLDIR)/sbin && ln -sf rc mxlmonitor
 endif
+	@cd $(INSTALLDIR)/sbin && ln -sf rc cdmonitor
 ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),GT7))
 	@cd $(INSTALLDIR)/sbin && ln -sf rc ext84991
 endif
@@ -1736,6 +1743,9 @@ endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hour_monitor
 ifeq ($(RTCONFIG_SPEEDTEST),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc speedtest
+endif
+ifneq ($(filter y,$(RTCONFIG_OOKLA) $(RTCONFIG_OOKLA_LITE)),)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc ookla_quota_mon
 endif
 ifeq ($(RTCONFIG_USB_MODEM),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc write_3g_ppp_conf

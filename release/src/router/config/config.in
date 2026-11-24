@@ -1927,6 +1927,10 @@ config RTCONFIG_MULTICAST_IPTV
 	bool "Multicsat IPTV"
 	default n
 
+config RTCONFIG_LANWAN_IPTV
+	bool "LAN/WAN port (not default WAN port) IPTV support"
+	default n
+
 config RTCONFIG_BONJOUR
 	bool "Apple device query support"
 	default y
@@ -3275,3 +3279,8 @@ config RTCONFIG_NO_AIDISK
 config RTCONFIG_SECURE_BY_DEFAULT
 	bool "secure setting in default"
 	default y
+
+config RTCONFIG_ZASSOC_B4ACS
+	bool "Zero maxassoc before auto channel select"
+	depends on RTCONFIG_HND_ROUTER_AX
+	default n

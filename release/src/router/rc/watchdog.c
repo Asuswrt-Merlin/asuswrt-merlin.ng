@@ -301,6 +301,7 @@ static void *fn_acts[_NSIG];
 static int ddns_check_count = 0;
 static int freeze_duck_count = 0;
 static int ddns_recover_min = 0;
+static pid_t ddns_async_pid = 0;
 
 #ifndef RTCONFIG_AVOID_TZ_ENV
 static char time_zone_t[32]={0};
@@ -1755,33 +1756,39 @@ int qca_set_wps_result(int config_index, int band)
 {
 	FILE *fp = NULL;
 	FILE *pfp = NULL;
-	char cmd[64] = {0}, tmp_str[64] = {0}, tmp[32] = {0}, result_file[64] = {0};
+	char cmd[64] = {0}, tmp_str[64] = {0}, tmp[65] = {0}, result_file[64] = {0};
 	char *buf = NULL;
 	char *sta = get_staifname(config_index);
 	int id = 0;
 
 	struct wlc_setting {
 
-		char ssid[32];
+		char ssid[33];
 		char key_mgmt[16];
 		char auth_alg[16];
 		char proto[16];
 		char pairwise[16];
 		char group[16];
-		char psk[32];
+		char psk[65];
 		char wep_tx_keyidx[4];
 		char wep_key[32];
 
 	} *wlc_s;
 
 	wlc_s = malloc(sizeof(struct wlc_setting));
-	memset(wlc_s, 0, sizeof(wlc_s));
+	if (wlc_s == NULL)
+		return -1;
+	memset(wlc_s, 0, sizeof(*wlc_s));
 
 	buf = malloc(sizeof(char) * 128);
+	if (buf == NULL) {
+		free(wlc_s);
+		return -1;
+	}
 	memset(buf, 0, 128);
 
 	/* Get current station ID */
-	sprintf(cmd, "wpa_cli -p /var/run/wpa_supplicant-%s -i %s list_networks", sta, sta);
+	snprintf(cmd, sizeof(cmd), "wpa_cli -p /var/run/wpa_supplicant-%s -i %s list_networks", sta, sta);
 	pfp = popen(cmd, "r");
 
 	if (pfp != NULL) {
@@ -1790,11 +1797,11 @@ int qca_set_wps_result(int config_index, int band)
 				sscanf(buf, "%d", &id);
 			}
 		}
+		pclose(pfp);
 	}
-	pclose(pfp);
 
 	sleep(3); // Wait update config file.
-	sprintf(result_file, "/etc/Wireless/conf/wpa_supplicant-%s.conf", sta);
+	snprintf(result_file, sizeof(result_file), "/etc/Wireless/conf/wpa_supplicant-%s.conf", sta);
 	fp = fopen(result_file, "r");
 
 	if (fp != NULL) {
@@ -1815,48 +1822,57 @@ int qca_set_wps_result(int config_index, int band)
 			if (found && !strstr(buf, "}")) {
 
 				if (strstr(buf, "ssid")) {
-					sscanf(buf, "%*[^\"]\"%[^\"]", tmp);
-					strcpy(wlc_s->ssid, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^\"]\"%64[^\"]", tmp) == 1)
+						strlcpy(wlc_s->ssid, tmp, sizeof(wlc_s->ssid));
 				}
 				else if (strstr(buf, "key_mgmt")) {
-					sscanf(buf, "%*[^=]=%s", tmp);
-					strcpy(wlc_s->key_mgmt, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^=]=%64s", tmp) == 1)
+						strlcpy(wlc_s->key_mgmt, tmp, sizeof(wlc_s->key_mgmt));
 				}
 				else if (strstr(buf, "auth_alg")) {
-					sscanf(buf, "%*[^=]=%s", tmp);
-					strcpy(wlc_s->auth_alg, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^=]=%64s", tmp) == 1)
+						strlcpy(wlc_s->auth_alg, tmp, sizeof(wlc_s->auth_alg));
 				}
 				else if (strstr(buf, "proto")) {
-					sscanf(buf, "%*[^=]=%s", tmp);
-					strcpy(wlc_s->proto, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^=]=%64s", tmp) == 1)
+						strlcpy(wlc_s->proto, tmp, sizeof(wlc_s->proto));
 				}
 				else if (strstr(buf, "pairwise")) {
-					sscanf(buf, "%*[^=]=%s", tmp);
-					strcpy(wlc_s->pairwise, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^=]=%64s", tmp) == 1)
+						strlcpy(wlc_s->pairwise, tmp, sizeof(wlc_s->pairwise));
 				}
 				else if (strstr(buf, "group")) {
-					sscanf(buf, "%*[^=]=%s", tmp);
-					strcpy(wlc_s->group, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^=]=%64s", tmp) == 1)
+						strlcpy(wlc_s->group, tmp, sizeof(wlc_s->group));
 				}
 				else if (strstr(buf, "psk")) {
-					sscanf(buf, "%*[^\"]\"%[^\"]", tmp);
-					strcpy(wlc_s->psk, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^\"]\"%64[^\"]", tmp) == 1)
+						strlcpy(wlc_s->psk, tmp, sizeof(wlc_s->psk));
 				}
 				else if (strstr(buf, "wep_tx_keyidx")) {
-					sscanf(buf, "%*[^=]=%s", tmp);
-					strcpy(wlc_s->wep_tx_keyidx, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^=]=%64s", tmp) == 1)
+						strlcpy(wlc_s->wep_tx_keyidx, tmp, sizeof(wlc_s->wep_tx_keyidx));
 				}
 				else if (strstr(buf, "wep_key")) {
-					sscanf(buf, "%*[^\"]\"%[^\"]", tmp);
-					strcpy(wlc_s->wep_key, tmp);
+					tmp[0] = '\0';
+					if (sscanf(buf, "%*[^\"]\"%64[^\"]", tmp) == 1)
+						strlcpy(wlc_s->wep_key, tmp, sizeof(wlc_s->wep_key));
 				}
 			}
 			else if (found && strstr(buf, "}"))
 				break;
 		}
+		fclose(fp);
 	}
 
-	fclose(fp);
 	free(buf);
 
 	/* Set to nvram */
@@ -7746,6 +7762,20 @@ void regular_ddns_check(void)
 	return;
 }
 
+static int is_ddns_async_running(void)
+{
+	pid_t pid;
+
+	if (ddns_async_pid > 0) {
+		pid = waitpid(ddns_async_pid, NULL, WNOHANG);
+		if (pid == 0 || (pid < 0 && errno != ECHILD))
+			return 1;
+		ddns_async_pid = 0;
+	}
+
+	return pids("ddns_async") != 0;
+}
+
 void ddns_check(void)
 {
 #ifdef RPAC68U
@@ -7757,6 +7787,8 @@ void ddns_check(void)
 
 	//_dprintf("ddns_check... %d\n", ddns_check_count);
 	if (!nvram_get_int("ddns_enable_x"))
+		return;
+	if (is_ddns_async_running())
 		return;
 
 #if defined(RTCONFIG_DUALWAN)
@@ -7871,16 +7903,16 @@ void ddns_check(void)
 	}
 	nvram_set_int("ddns_check_retry", ddns_check_retry);
 
-	if (wan_unit != last_unit) {
-#ifndef RTCONFIG_INADYN
-		unlink("/tmp/ddns.cache");
-#else
-		system("rm -f /var/cache/inadyn/*.cache");
-#endif
+	{
+		char *argv[] = { "/sbin/ddns_async", wan_unit != last_unit ? "1" : "0", NULL };
+		int ret;
+
+		ret = _eval(argv, NULL, 0, &ddns_async_pid);
+		if (ret)
+			logmessage("watchdog", "Cannot start DDNS: %s", strerror(ret));
+		else
+			logmessage("watchdog", "start ddns.");
 	}
-	logmessage("watchdog", "start ddns.");
-	stop_ddns();
-	start_ddns("watchdog", 0);
 
 	return;
 }
@@ -11107,8 +11139,24 @@ void feedback_check(void)
 
 		if(!pids("sendfeedback"))
 		{
-			logmessage("watchdog", "[%s] Resend the last feedback..\n", __FUNCTION__);
-			_dprintf("[%s] Resend the last feedback..\n", __FUNCTION__);
+			int resend_cnt = nvram_get_int("fb_resend_cnt");
+
+			if(resend_cnt >= FB_RESEND_MAX)
+			{
+				/* Do not resend forever. fb_state=2 means "failed" (GUI shows the failure page, and 0 would make the GUI
+				** think a feedback is still in progress). init.c turns fb_state 2 back to 0 at boot, so the next boot gets
+				** a fresh series of FB_RESEND_MAX tries.
+				*/
+				logmessage("watchdog", "[%s] Resent the last feedback %d times, give up until next boot.\n", __FUNCTION__, resend_cnt);
+				nvram_set("fb_state", "2");
+				nvram_set("fb_resend", "");
+				nvram_set("fb_resend_cnt", "");
+				return;
+			}
+
+			nvram_set_int("fb_resend_cnt", resend_cnt + 1);
+			logmessage("watchdog", "[%s] Resend the last feedback (%d/%d)..\n", __FUNCTION__, resend_cnt + 1, FB_RESEND_MAX);
+			_dprintf("[%s] Resend the last feedback (%d/%d)..\n", __FUNCTION__, resend_cnt + 1, FB_RESEND_MAX);
 			nvram_set("fb_resend", "1");
 			_eval(cmd, NULL, 0, &pid);
 		}
@@ -11635,11 +11683,6 @@ wdp:
 #endif
 #ifdef HND_ROUTER
 	udhcpc_check();
-#endif
-#if 1   /* Do Function Test Script */
-		if(nvram_match("ci", "1")){
-			system("sh /tmp/mnt/sda1/auto_test.sh");
-		}
 #endif
 #ifdef RTCONFIG_FBWIFI
 	if(nvram_match("fbwifi_enable", "on") && nvram_match("fbwifi_running", "1"))

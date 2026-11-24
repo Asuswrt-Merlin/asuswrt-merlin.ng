@@ -29,7 +29,9 @@ int
 ca_cli_dump_local(ca_cli_t *ctx)
 {
 	const char * nv_out_file_path = nvram_safe_get("ceventd_out");
-	char sys_cmd[512] = "";
+	/* large enough for the template plus two full-length paths (CA_FILE_PATH_LEN
+	 * each) and both grep filters without truncation */
+	char sys_cmd[1024] = "";
 	char grep_iface[64] = "";
 	char grep_mac[64] = "";
 
@@ -48,18 +50,29 @@ ca_cli_dump_local(ca_cli_t *ctx)
 				ca_snprintf(grep_mac, sizeof(grep_mac), "grep -i -e %s |",
 						ctx->mac);
 			}
-			printf("TIME(ms)  TDiff IFace STA_MAC_ADDRESS   "
-					"Flags Stts Rsn  Auth AT    \tDir \tEVENT\n");
+			/* Header uses the SAME fixed-width columns as the data rows below so
+			 * they stay aligned. Numeric columns are sized to their writer-side
+			 * types in ceventd_utils.c: Flags is int16 (up to 6 chars incl. sign),
+			 * Stts/Rsn/Auth are int32 (up to 11 chars incl. sign).
+			 */
+			printf("%-28s %12s %-8s %-17s %-6s %-11s %-11s %-11s %-8s %-3s %s\n",
+					"TIME(ms)", "TDiff(ms)", "IFace", "STA_MAC_ADDRESS", "Flags",
+					"Stts", "Rsn", "Auth", "AT", "Dir", "EVENT");
 			ca_snprintf(sys_cmd, sizeof(sys_cmd),
 				"bp=0; grep -v TIME.ms %s %s 2>/dev/null | %s %s "
 				"while read -r a b c d e f g h i j k rest; do "
-				/* if TIME value is large, extract the first 9 digits
-				 * from LSB to calculate the TDiff
-				 */
-				"bx=$b && [ ${#b} -ge 10 ] && from=`expr ${#b} - 8` && "
-				"bx=`expr substr $b $from 9`; bd=`expr $bx - $bp`; "
-				"echo -e \"$b  $bd\\t$c  $d $e $f $g $h $i \\t$j \t$k\"; "
-				"bp=$bx; done",
+				/* split TIME(ms) into seconds (bs) and ms remainder (bm) for display */
+				"bs=`expr $b / 1000`; bm=`expr $b %% 1000`; "
+				/* TDiff = ms since previous event; first row has no predecessor -> 0 */
+				"if [ \"$bp\" -eq 0 ]; then bd=0; else bd=`expr $b - $bp`; fi; "
+				/* %% escapes printf in ca_snprintf; shell receives %Y.%m.%d %H:%M:%S and %Z */
+				"bt=`date -d @$bs +\"%%Y.%%m.%%d %%H:%%M:%%S\"`; bz=`date -d @$bs +%%Z`; "
+				/* insert zero-padded ms between seconds and timezone: 17:14:19.123 CST */
+				"ts=`printf \"%%s.%%03d %%s\" \"$bt\" $bm \"$bz\"`; "
+				/* same column widths as the header above to keep rows aligned */
+				"printf \"%%-28s %%12s %%-8s %%-17s %%-6s %%-11s %%-11s %%-11s %%-8s %%-3s %%s\\n\" "
+				"\"$ts\" \"$bd\" \"$c\" \"$d\" \"$e\" \"$f\" \"$g\" \"$h\" \"$i\" \"$j\" \"$k\"; "
+				"bp=$b; done",
 				ctx->out_path, ctx->out_bak_path, grep_iface, grep_mac);
 			system(sys_cmd);
 		}

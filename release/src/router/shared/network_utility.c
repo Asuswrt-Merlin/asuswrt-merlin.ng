@@ -159,6 +159,65 @@ int is_valid_ip6(const char* addr)
 	return (is_valid_ip(addr) == 2) ? 1 : 0;
 }
 
+/* validates if a string is a valid IPv4 address */
+int is_valid_ipv4(const char *addr)
+{
+	struct in_addr ia;
+
+	if (!addr)
+		return 0;
+
+	if (inet_pton(AF_INET, addr, &ia) != 1)
+		return 0;
+
+	/* 0.0.0.0 is the unspecified address, never a usable host address */
+	return (ia.s_addr != 0);
+}
+
+/* validates if a string is a valid IPv6 address (numeric only, no scope id) */
+int is_valid_ipv6(const char *addr)
+{
+	struct in6_addr in6;
+
+	if (!addr)
+		return 0;
+
+	return (inet_pton(AF_INET6, addr, &in6) == 1);
+}
+
+/* validates if a string is a dotted IPv4 netmask with contiguous bits,
+ * e.g. "255.255.255.0". CIDR form ("24") is not accepted. */
+int is_valid_ipv4_netmask(const char *mask)
+{
+	struct in_addr in;
+	uint32_t host;
+
+	if (!mask || inet_pton(AF_INET, mask, &in) != 1)
+		return 0;
+
+	/* host bits must be all ones from the LSB, i.e. (host + 1) is a power of 2 */
+	host = ~ntohl(in.s_addr);
+	return ((host & (host + 1)) == 0);
+}
+
+/* validates if a string is an IPv6 suffix (interface ID / host part) that is
+ * appended to a prefix, e.g. "1", "1000", "::1", "a:b".
+ * Only hex digits and ':' are allowed. */
+int is_valid_ipv6_suffix(const char *suffix)
+{
+	const char *p;
+
+	if (!suffix || *suffix == '\0')
+		return 0;
+
+	for (p = suffix; *p; p++) {
+		if (!isxdigit((unsigned char)*p) && *p != ':')
+			return 0;
+	}
+
+	return 1;
+}
+
 int is_ip4_in_use(const char* addr)
 {
 	struct in_addr ipaddr;

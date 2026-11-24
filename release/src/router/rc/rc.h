@@ -2082,6 +2082,7 @@ extern int rtkmonitor_main(int argc, char *argv[]);
 #if defined(RTBE82M) || defined(GSBE18000) || defined(GSBE12000) || defined(GS7_PRO) || defined(GT7)
 extern int mxlmonitor_main(int argc, char *argv[]);
 #endif
+extern int cdmonitor_main(int argc, char *argv[]);
 #if defined(GT7)
 extern int ext84991_main(int argc, char *argv[]);
 #endif
@@ -2229,6 +2230,7 @@ extern void reset_corefilesize(rlim_t s);
 #define DEBUGLOG_CORE 0x2
 #define DEBUGLOG_SLOG 0x4
 extern void collect_debuglog(int type);
+extern int check_mountpoint(char *mountpoint);
 extern void envsave(const char* path);
 extern int remove_ip_rules(const int pref, const int v6);
 
@@ -2358,6 +2360,8 @@ extern int stop_rtkmonitor(void);
 extern int start_mxlmonitor(void);
 extern int stop_mxlmonitor(void);
 #endif
+extern int start_cdmonitor(void);
+extern int stop_cdmonitor(void);
 #if defined(RTBE92U)
 extern int start_tempsense(void);
 extern int stop_tempsense(void);
@@ -2520,7 +2524,7 @@ enum {
 	,DBLOG_STATE_SENDMAIL_FAIL_OTHER
 	,DBLOG_STATE_ERR_USB
 	,DBLOG_STATE_ERR_OTHERS
-}; //should sync with dblog/daemon/dblog.c
+}; // You should sync it with dblog/daemon/dblog.h
 #endif /* RTCONFIG_DBLOG */
 
 extern unsigned long readFileSize( char *filepath );
@@ -2955,6 +2959,7 @@ extern int firmware_webs_update_main(int argc, char *argv[]);
 #endif
 #ifdef RTCONFIG_FRS_FEEDBACK
 extern void start_sendfeedback(void);
+#define FB_RESEND_MAX 4 /* max times watchdog resends the last feedback; the delay before each resend is in dsl_fb.c */
 #ifdef RTCONFIG_DBLOG
 extern void start_senddblog(char *path);
 extern void start_dblog(int option);
@@ -3281,6 +3286,10 @@ extern int speedtest_main(int argc, char **argv);
 extern void wan_bandwidth_detect(void);
 extern int speedtest();
 
+#if defined(RTCONFIG_OOKLA) || defined(RTCONFIG_OOKLA_LITE)
+extern int ookla_quota_mon_main(int argc, char *argv[]);
+#endif
+
 #if defined(RTCONFIG_HNS)
 extern int hns_main(int argc, char **argv);
 extern void hns_sig_update_flow();
@@ -3453,6 +3462,7 @@ extern void 	apg_start(void);
 extern void 	apg_stop(void);
 extern void 	apg_hotplug_net(char *interface, int action /* 0:del, 1:add */);
 extern int 		apg_is_wds_vlan_if(char *interface);
+extern int 		apg_is_wds_raw_if(char *interface);
 extern int  	apg_create_wl_vlan(int vid, char *ifnames, char *ret_ifnames, size_t ret_ifnames_bsize);
 extern int	 	apg_destory_wl_vlan(char *vlan_ifnames);
 extern int	 	apg_create_eth_vlan(int vid, char *ifnames, char *ret_ifnames, size_t ret_ifnames_bsize);
@@ -3817,7 +3827,11 @@ extern void add_multi_ppp_routes(int wan_unit);
 extern void del_multi_ppp_routes(int wan_unit);
 extern void set_mtppp_load_balance();
 #endif
-extern void exec_uu();
+#ifdef RTCONFIG_UUPLUGIN
+extern void exec_uu(void);
+extern void start_uuplugin(void);
+extern void stop_uuplugin(void);
+#endif
 #if defined(RTCONFIG_MTK_BSD)
 #define BSD_LOG "/tmp/mtk_mapd.log"
 #define BSD_PATH "/etc/mapd_strng.conf"
@@ -3908,10 +3922,13 @@ extern int setting_SG_mode_wps();
 #endif
 
 #ifdef RTCONFIG_BCMARM
+#define WIFI_TEMP_MAX_RADIOS	4
 typedef struct WiFi_temperature_s {
-	double t2g;
-	double t5g;
-	double t5g2;
+	int count;	/* number of valid entries in radio[] */
+	struct {
+		const char *band;	/* "2G", "5G", "5G2", "6G" or "6G2" (static string) */
+		int temp;		/* raw phy_tempsense value, degrees C */
+	} radio[WIFI_TEMP_MAX_RADIOS];
 } WiFi_temperature_t;
 double get_cpu_temp();
 int get_wifi_temps(WiFi_temperature_t *wt);

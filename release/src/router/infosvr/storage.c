@@ -31,6 +31,7 @@ extern char mac[];
 extern int cfg_groupid_is_null;
 char* gen_vsie_id(int, size_t *);
 #include <time.h>
+#include <encrypt.h>	/* gen_random_ts() */
 int str2hex(const char *, unsigned char *, size_t);
 #endif
 
@@ -125,7 +126,7 @@ int getStorageStatusFindCap(STORAGE_INFO_FINDCAP_T *st)
 	char vsie_id_str[41] = {0};
 	char *tmp = NULL;
 	size_t cfg_group_len = 0;
-	int ts = time((time_t *)NULL);
+	int ts;
 
 	memset(st, 0, sizeof(*st));
 
@@ -176,6 +177,7 @@ int getStorageStatusFindCap(STORAGE_INFO_FINDCAP_T *st)
 
 	if(cfg_groupid_is_null == 1)
 	{
+		ts = gen_random_ts();
 		tmp = gen_vsie_id(ts, &cfg_group_len);
 		if (tmp != NULL)
 		{

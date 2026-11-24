@@ -281,7 +281,6 @@ ifeq ($(HND_ROUTER),y)
 export CONFIG_BCMWL5=y
 export CONFIG_LINUX26=y
 	# its multi-arch in 94908, specify ARCH in kbuild result bad
-export IFADDRS_LINKS=$(SRCBASE)/router/libusbmuxd-2.0.2/common/ifaddrs.c $(SRCBASE)/router/minidlna/ifaddrs.c $(SRCBASE)/router/miniupnpd/ifaddrs.c $(SRCBASE)/router/wsdd2/ifaddrs.c
 endif
 ifneq ($(BUILDREV),)
 export BUILDREV := -g$(shell git log --pretty=format:'%h' -n 1)
@@ -785,7 +784,6 @@ endif
 	echo ""
 	
 ifeq ($(HND_ROUTER),y)
-	@rm -f $(IFADDRS_LINKS)
 	@rm -rf image
 	@ln -sf targets/${PROFILE} image
 	-$(MAKE) -C router strips
@@ -3646,6 +3644,10 @@ define RouterOptions
 		sed -i "/RTCONFIG_MULTICAST_IPTV/d" $(1); \
 		echo "RTCONFIG_MULTICAST_IPTV=y" >>$(1); \
 	fi;
+	if [ "$(LANWAN_IPTV)" = "y" ]; then \
+		sed -i "/RTCONFIG_LANWAN_IPTV/d" $(1); \
+		echo "RTCONFIG_LANWAN_IPTV=y" >>$(1); \
+	fi;
 	if [ "$(VLAN)" = "y" ]; then \
 		sed -i "/RTCONFIG_PORT_BASED_VLAN/d" $(1); \
 		echo "RTCONFIG_PORT_BASED_VLAN=y" >>$(1); \
@@ -4951,6 +4953,10 @@ define RouterOptions
 		sed -i "/RTCONFIG_SECURE_BY_DEFAULT\>/d" $(1); \
 		echo "RTCONFIG_SECURE_BY_DEFAULT=y" >>$(1); \
 	fi;
+	if [ "$(ZASSOC_B4ACS)" = "y" ]; then \
+		sed -i "/RTCONFIG_ZASSOC_B4ACS/d" $(1); \
+		echo "RTCONFIG_ZASSOC_B4ACS=y" >>$(1); \
+	fi
 
 	$(call platformRouterOptions, $(1))
 endef

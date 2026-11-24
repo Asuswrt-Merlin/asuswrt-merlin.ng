@@ -246,7 +246,9 @@ check_if_dir_exist(const char *dirpath)
 	return d_exists(dirpath);
 }
 
-int 
+/* NOTE: despite its name, returns 1 if dirpath has any entry other than "." and "..",
+ * and 0 if it is empty or cannot be opened. */
+int
 check_if_dir_empty(const char *dirpath)
 {
 	DIR *dir;

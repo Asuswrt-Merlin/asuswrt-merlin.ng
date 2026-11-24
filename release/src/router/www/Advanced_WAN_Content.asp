@@ -185,10 +185,17 @@ var faq_href2 = "https://nw-dlcdnet.asus.com/support/forward.html?model=&type=Fa
 var faq_href3 = "https://nw-dlcdnet.asus.com/support/forward.html?model=&type=Faq&lang="+ui_lang+"&kw=&num=127";
 var orig_mtu = '<% nvram_get("wan_mtu"); %>';
 var default_wan_mtu = httpApi.nvramDefaultGet(["wan_mtu"]).wan_mtu;
+var wan_mtu_max = 1500;
+var wan_pppoe_mtu_max = (isSupport("mtk") || isSupport("qca") || !isSupport("no_jumbo_frame")) ? 1500 : 1492;
+var mtu_last_changed = "";
 
 const eth_wan_list = httpApi.hookGet("get_ethernet_wan_list", true);
 
 function initial(){
+	document.getElementById("wan_mtu_range_hint").textContent = "1280 - " + wan_mtu_max;
+	$(document).on("input", "input[name='wan_mtu']", function() { mtu_last_changed = "wan_mtu"; });
+	$(document).on("input", "input[name='wan_pppoe_mtu']", function() { mtu_last_changed = "wan_pppoe_mtu"; });
+	$(document).on("input", "input[name='wan_pppoe_mru']", function() { mtu_last_changed = "wan_pppoe_mru"; });
 	if (dnspriv_support) {
 		if (dnsfilter_support)
 			var dnsfilter_enable = '<% nvram_get("dnsfilter_enable_x"); %>';
@@ -1010,21 +1017,26 @@ function validForm(){
 	}
 	
 	if(wan_type == "pppoe"){
-		if(!validator.numberRange(document.form.wan_pppoe_mtu, 128, 1492)
-				|| !validator.numberRange(document.form.wan_pppoe_mru, 128, 1492))
+		if(!validator.numberRange(document.form.wan_pppoe_mtu, 128, wan_pppoe_mtu_max)
+				|| !validator.numberRange(document.form.wan_pppoe_mru, 128, wan_pppoe_mtu_max))
 			return false;
 
-		/* reset wan_mtu to default value */
-		if($("#wan_mtu_tr").css("display") != "none"){
-			if(document.form.wan_mtu.value != "") {
-				if(parseInt(document.form.wan_pppoe_mtu.value) + 8 > parseInt(document.form.wan_mtu.value)){
+		/* adjust mtu pair based on which field the user last changed */
+		if(document.form.wan_mtu.value != "") {
+			if(mtu_last_changed == "wan_mtu"){
+				if((parseInt(document.form.wan_pppoe_mtu.value) + 8 > parseInt(document.form.wan_mtu.value)) || 
+				   (parseInt(document.form.wan_pppoe_mru.value) + 8 > parseInt(document.form.wan_mtu.value))){
 					document.form.wan_pppoe_mtu.value = parseInt(document.form.wan_mtu.value) - 8;
+					document.form.wan_pppoe_mru.value = document.form.wan_pppoe_mtu.value;
 				}
 			}
-		}
-		else if(document.form.wan_mtu.value != default_wan_mtu){
-			document.form.wan_mtu.value = default_wan_mtu;
-			document.form.wan_mtu.disabled = false;
+			else{
+				var max_pppoe = Math.max(parseInt(document.form.wan_pppoe_mtu.value), parseInt(document.form.wan_pppoe_mru.value));
+				if(max_pppoe + 8 > parseInt(document.form.wan_mtu.value)){
+					document.form.wan_mtu.value = max_pppoe + 8;
+					document.form.wan_mtu.disabled = false;
+				}
+			}
 		}
 
 		if(!validator.string(document.form.wan_pppoe_service)
@@ -1107,8 +1119,8 @@ function validForm(){
 		 if(!validator.string(document.form.wan_heartbeat_x))
 		 	return false;
 
-	if($("#wan_mtu_tr").css("display") != "none" && (orig_mtu != "" || document.form.wan_mtu.value.length > 0)) {
-		if(!validator.numberRange(document.form.wan_mtu, 1280, 1500)) {
+	if(wan_type != "pppoe" && $("#wan_mtu_tr").css("display") != "none" && (orig_mtu != "" || document.form.wan_mtu.value.length > 0)) {
+		if(!validator.numberRange(document.form.wan_mtu, 1280, wan_mtu_max)) {
 			document.form.wan_mtu.focus();
 			document.form.wan_mtu.select();
 			return false;
@@ -1188,7 +1200,9 @@ function change_wan_type(wan_type, flag){
 		change_wan_dhcp_enable(flag);
 	else
 		change_wan_dhcp_enable(1);
-	
+
+	document.form.wan_mtu.value = orig_mtu;
+
 	if(wan_type == "pppoe"){
 		showhide("wan_DHCP_opt",0);
 		inputCtrl(document.form.wan_vendorid, 0);
@@ -1267,7 +1281,7 @@ function change_wan_type(wan_type, flag){
 			document.form.bond_wan_radio.value = "0";
 		}
 
-		inputCtrl(document.form.wan_mtu, 1);
+		inputCtrl(document.form.wan_mtu, 0);
 	}
 	else if(wan_type == "l2tp"){
 		showhide("wan_DHCP_opt",0);
@@ -1308,6 +1322,7 @@ function change_wan_type(wan_type, flag){
 		}
 
 		inputCtrl(document.form.wan_mtu, 1);
+		if(parseInt(document.form.wan_mtu.value) > 1500) document.form.wan_mtu.value = 1500;
 	}
 	else if(wan_type == "static"){
 		showhide("wan_DHCP_opt",0);
@@ -1365,6 +1380,7 @@ function change_wan_type(wan_type, flag){
 		}
 
 		inputCtrl(document.form.wan_mtu, 1);
+		if(parseInt(document.form.wan_mtu.value) > 1500) document.form.wan_mtu.value = 1500;
 	}
 	else if(Softwire46_support && (wan_type == "lw4o6" || wan_type == "map-e" || wan_type == "v6plus" || wan_type == "ocnvc" || wan_type == "dslite" || wan_type == "v6opt")){
 		showhide("wan_DHCP_opt",0);
@@ -1410,6 +1426,7 @@ function change_wan_type(wan_type, flag){
 		}
 
 		inputCtrl(document.form.wan_mtu, 1);
+		if(parseInt(document.form.wan_mtu.value) > 1500) document.form.wan_mtu.value = 1500;
 	}
 	else{	// Automatic IP or 802.11 MD or ""		
 		showhide("wan_DHCP_opt",1);
@@ -1471,6 +1488,7 @@ function change_wan_type(wan_type, flag){
 		}
 
 		inputCtrl(document.form.wan_mtu, 1);
+		if(parseInt(document.form.wan_mtu.value) > 1500) document.form.wan_mtu.value = 1500;
 	}
 }
 
@@ -3120,7 +3138,7 @@ function get_default_wan_name(){
 				<#PPPConnection_x_PPPoEMTU_itemname#>
 			</th>
 			<td>
-				<input type="text" maxlength="5" name="wan_mtu" class="input_6_table" value="<% nvram_get("wan_mtu"); %>" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off"/>&nbsp;1280 - 1500
+				<input type="text" maxlength="5" name="wan_mtu" class="input_6_table" value="<% nvram_get("wan_mtu"); %>" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off"/>&nbsp;<span id="wan_mtu_range_hint"></span>
 			</td>
 		</tr>
 		</table>

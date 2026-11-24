@@ -111,7 +111,7 @@ confmtd_backup()
 #ifdef BCA_HNDROUTER
 	FILE *fp;
 	char dev[PATH_MAX];
-	char size_str[32];
+	char size_str[32] = {0};
 	unsigned long int size = 0;
 #endif
 
@@ -134,7 +134,8 @@ confmtd_backup()
 
 		if ((fp = fopen("/proc/mtd", "r"))) {
 			while (fgets(dev, sizeof(dev), fp)) {
-				if (sscanf(dev, "%*s %s %*s", size_str) && strstr(dev, "data")) {
+				/* sscanf() returns EOF (-1) on a short line, so require exactly 1 match. */
+				if (sscanf(dev, "%*s %31s %*s", size_str) == 1 && strstr(dev, "data")) {	/* 31 == sizeof(size_str) - 1 */
 					size = strtoul(size_str, NULL, 16);
 					break;
 				}

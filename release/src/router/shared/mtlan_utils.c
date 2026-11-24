@@ -122,6 +122,37 @@ static char *calc_subnet(char *addr, unsigned int prefix, char *ret, size_t rets
 }
 
 /*******************************
+* Field Validation
+*
+* Values parsed here come from nvram and may be written by consumers of
+* this API into config files (dnsmasq, iptables-restore, ...) or command
+* lines.  Each field is checked against the format it is defined to hold,
+* so every consumer gets safe data.  Checks are character / format
+* whitelists only; strict user-facing rules stay in the web UI.
+*******************************/
+/*
+ * Copy src into dst only when it passes valid().
+ * return 1: copied, 0: src empty (dst untouched), -1: invalid (dst untouched)
+ */
+static int _set_field(char *dst, size_t dsz, const char *src, int (*valid)(const char *),
+                      const char *func, const char *field)
+{
+	if (!src || !*src)
+		return 0;
+
+	if (!valid(src)) {
+		_dprintf("%s: invalid %s, ignored\n", func, field);
+		return -1;
+	}
+
+	strlcpy(dst, src, dsz);
+	return 1;
+}
+
+#define MTLAN_SET_FIELD(dst, src, valid) \
+	_set_field((dst), sizeof(dst), (src), (valid), __func__, #dst)
+
+/*******************************
 * Get Nvram to Sturct
 *******************************/
 void *INIT_MTLAN(const unsigned int sz)
@@ -217,6 +248,14 @@ SUBNET_T *get_mtsubnet(SUBNET_T *sublst, size_t *lst_sz, const int is_rm)
 		if (cnt >= MTLAN_MAXINUM)
 			break;
 
+		/* basic network settings: an invalid value makes the whole subnet unusable */
+		if ((ifname && *ifname && !is_valid_ifname(ifname))
+		 || (addr && *addr && !is_valid_ipv4(addr))
+		 || (netmask && *netmask && !is_valid_ipv4_netmask(netmask))) {
+			_dprintf("%s: invalid ifname/addr/netmask in subnet %s, skip\n", __func__, (idx && is_valid_filename_token(idx)) ? idx : "?");
+			continue;
+		}
+
 		if (idx && *idx)
 			sublst[cnt].idx = strtol(idx, NULL, 10);
 		if (ifname && *ifname) {
@@ -229,14 +268,15 @@ SUBNET_T *get_mtsubnet(SUBNET_T *sublst, size_t *lst_sz, const int is_rm)
 			strlcpy(sublst[cnt].netmask, netmask, sizeof(sublst[cnt].netmask));
 		if (dhcp_enable && *dhcp_enable)
 			sublst[cnt].dhcp_enable = (strtol(dhcp_enable, NULL, 10) == 0) ? 0 : 1;
-		if (dhcp_min && *dhcp_min)
-			strlcpy(sublst[cnt].dhcp_min, dhcp_min, sizeof(sublst[cnt].dhcp_min));
-		if (dhcp_max && *dhcp_max)
-			strlcpy(sublst[cnt].dhcp_max, dhcp_max, sizeof(sublst[cnt].dhcp_max));
+		/* an invalid DHCP range would break the DHCP/DNS server config, turn DHCP off instead */
+		if (MTLAN_SET_FIELD(sublst[cnt].dhcp_min, dhcp_min, is_valid_ipv4) < 0
+		 || MTLAN_SET_FIELD(sublst[cnt].dhcp_max, dhcp_max, is_valid_ipv4) < 0) {
+			sublst[cnt].dhcp_min[0] = sublst[cnt].dhcp_max[0] = '\0';
+			sublst[cnt].dhcp_enable = 0;
+		}
 		if (dhcp_lease && *dhcp_lease)
 			sublst[cnt].dhcp_lease = strtol(dhcp_lease, NULL, 10);
-		if (domain_name && *domain_name)
-			strlcpy(sublst[cnt].domain_name, domain_name, sizeof(sublst[cnt].domain_name));
+		MTLAN_SET_FIELD(sublst[cnt].domain_name, domain_name, is_valid_domainname);
 		if (dns && *dns) {
 			dnscnt = 0;
 			duptr = subptr = strdup(dns);
@@ -244,17 +284,16 @@ SUBNET_T *get_mtsubnet(SUBNET_T *sublst, size_t *lst_sz, const int is_rm)
 				while ((dnstr = strsep(&subptr, ",")) != NULL) {
 					if (dnscnt > 1)
 						break;
-					strlcpy(sublst[cnt].dns[dnscnt], dnstr, sizeof(sublst[cnt].dns[dnscnt]));
+					MTLAN_SET_FIELD(sublst[cnt].dns[dnscnt], dnstr, is_valid_ipv4);
 					dnscnt++;
 				}
 				free(duptr);
 			}
 		}
-		if (wins && *wins)
-			strlcpy(sublst[cnt].wins, wins, sizeof(sublst[cnt].wins));
+		MTLAN_SET_FIELD(sublst[cnt].wins, wins, is_valid_ipv4);
 		if (dhcp_res && *dhcp_res)
 			sublst[cnt].dhcp_res = strtol(dhcp_res, NULL, 10);
-		if (dhcp_res && *dhcp_res_idx)
+		if (dhcp_res_idx && *dhcp_res_idx)
 			sublst[cnt].dhcp_res_idx = strtol(dhcp_res_idx, NULL, 10);
 
 		strlcpy(sublst[cnt].subnet, calc_subnet(addr, v4mask2int(netmask), subnet, sizeof(subnet)), sizeof(sublst[cnt].subnet));
@@ -269,12 +308,9 @@ SUBNET_T *get_mtsubnet(SUBNET_T *sublst, size_t *lst_sz, const int is_rm)
 			sublst[cnt].v6_enable = strtol(v6_enable, NULL, 10);
 		if (v6_autoconf && *v6_autoconf)
 			sublst[cnt].v6_autoconf = strtol(v6_autoconf, NULL, 10);
-		if (addr6 && *addr6)
-			strlcpy(sublst[cnt].addr6, addr6, sizeof(sublst[cnt].addr6));
-		if (dhcp6_min && *dhcp6_min)
-			strlcpy(sublst[cnt].dhcp6_min, dhcp6_min, sizeof(sublst[cnt].dhcp6_min));
-		if (dhcp6_max && *dhcp6_max)
-			strlcpy(sublst[cnt].dhcp6_max, dhcp6_max, sizeof(sublst[cnt].dhcp6_max));
+		MTLAN_SET_FIELD(sublst[cnt].addr6, addr6, is_valid_ipv6_suffix);
+		MTLAN_SET_FIELD(sublst[cnt].dhcp6_min, dhcp6_min, is_valid_ipv6_suffix);
+		MTLAN_SET_FIELD(sublst[cnt].dhcp6_max, dhcp6_max, is_valid_ipv6_suffix);
 		if (dns6 && *dns6) {
 			dnscnt = 0;
 			duptr = subptr = strdup(dns6);
@@ -282,7 +318,7 @@ SUBNET_T *get_mtsubnet(SUBNET_T *sublst, size_t *lst_sz, const int is_rm)
 				while ((dnstr = strsep(&subptr, ",")) != NULL) {
 					if (dnscnt > 2)
 						break;
-					strlcpy(sublst[cnt].dns6[dnscnt], dnstr, sizeof(sublst[cnt].dns6[dnscnt]));
+					MTLAN_SET_FIELD(sublst[cnt].dns6[dnscnt], dnstr, is_valid_ipv6);
 					dnscnt++;
 				}
 				free(duptr);
@@ -308,20 +344,24 @@ static SUBNET_T *get_default_lan(SUBNET_T *ptr)
 	memset(ptr, 0, sizeof(SUBNET_T));
 
 	/* IPv4 */
-	strlcpy(ptr->ifname, nvram_safe_get("lan_ifname"), sizeof(ptr->ifname));
+	MTLAN_SET_FIELD(ptr->ifname, nvram_safe_get("lan_ifname"), is_valid_ifname);
 	strlcpy(ptr->br_ifname, ptr->ifname, sizeof(ptr->br_ifname));
-	strlcpy(ptr->addr, nvram_safe_get("lan_ipaddr"), sizeof(ptr->addr));
-	strlcpy(ptr->netmask, nvram_safe_get("lan_netmask"), sizeof(ptr->netmask));
+	MTLAN_SET_FIELD(ptr->addr, nvram_safe_get("lan_ipaddr"), is_valid_ipv4);
+	MTLAN_SET_FIELD(ptr->netmask, nvram_safe_get("lan_netmask"), is_valid_ipv4_netmask);
 	strlcpy(ptr->subnet, calc_subnet(ptr->addr, v4mask2int(ptr->netmask), subnet, sizeof(subnet)), sizeof(ptr->subnet));
 	ptr->prefixlen = v4mask2int(nvram_safe_get("lan_netmask"));
 	ptr->dhcp_enable = nvram_get_int("dhcp_enable_x");
-	strlcpy(ptr->dhcp_min, nvram_safe_get("dhcp_start"), sizeof(ptr->dhcp_min));
-	strlcpy(ptr->dhcp_max, nvram_safe_get("dhcp_end"), sizeof(ptr->dhcp_max));
+	/* an invalid DHCP range would break the DHCP/DNS server config, turn DHCP off instead */
+	if (MTLAN_SET_FIELD(ptr->dhcp_min, nvram_safe_get("dhcp_start"), is_valid_ipv4) < 0
+	 || MTLAN_SET_FIELD(ptr->dhcp_max, nvram_safe_get("dhcp_end"), is_valid_ipv4) < 0) {
+		ptr->dhcp_min[0] = ptr->dhcp_max[0] = '\0';
+		ptr->dhcp_enable = 0;
+	}
 	ptr->dhcp_lease = nvram_get_int("dhcp_lease");
-	strlcpy(ptr->domain_name, nvram_safe_get("lan_domain"), sizeof(ptr->domain_name));
-	strlcpy(ptr->dns[0], nvram_safe_get("dhcp_dns1_x"), sizeof(ptr->dns[0]));
-	strlcpy(ptr->dns[1], nvram_safe_get("dhcp_dns2_x"), sizeof(ptr->dns[1]));
-	strlcpy(ptr->wins, nvram_safe_get("dhcp_wins_x"), sizeof(ptr->wins));
+	MTLAN_SET_FIELD(ptr->domain_name, nvram_safe_get("lan_domain"), is_valid_domainname);
+	MTLAN_SET_FIELD(ptr->dns[0], nvram_safe_get("dhcp_dns1_x"), is_valid_ipv4);
+	MTLAN_SET_FIELD(ptr->dns[1], nvram_safe_get("dhcp_dns2_x"), is_valid_ipv4);
+	MTLAN_SET_FIELD(ptr->wins, nvram_safe_get("dhcp_wins_x"), is_valid_ipv4);
 	ptr->dhcp_res = nvram_get_int("dhcp_static_x");
 	ptr->dhcp_res_idx = 0; /* no reference */
 	ptr->dot_enable = nvram_get_int("dnspriv_enable");
@@ -968,13 +1008,23 @@ char* get_vpns_iprange_by_vpns_idx(int vpns_idx, char* buf, size_t len)
 				//ipsec_profile_1=4>Host-to-Net>null>null>wan>>1>12345678>null>null>null>null>null>1>10.10.10> ...
 				int ipsec_vsubnet_idx = 13;
 				char ipsec_prof[256] = {0};
+				char vsubnet_ip[INET_ADDRSTRLEN + 4];
 				char *p, *p_end;
 				nvram_safe_get_r("ipsec_profile_1", ipsec_prof, sizeof(ipsec_prof));
 				p = strpbrk(ipsec_prof, ">");
-				while (ipsec_vsubnet_idx--)
+				while (p && ipsec_vsubnet_idx-- > 0)
 					p = strpbrk(p+1, ">");
+				if (!p)
+					continue;
 				p_end = strpbrk(p+1, ">");
-				*p_end = '\0';
+				if (p_end)
+					*p_end = '\0';
+				/* virtual subnet is the first three octets, e.g. "10.10.10" */
+				if (snprintf(vsubnet_ip, sizeof(vsubnet_ip), "%s.1", p+1) >= sizeof(vsubnet_ip)
+				 || !is_valid_ipv4(vsubnet_ip)) {
+					_dprintf("%s: invalid ipsec virtual subnet, ignored\n", __func__);
+					continue;
+				}
 				snprintf(buf, len, "%s.1-%s.254", p+1, p+1);
 				ret = 1;
 			}

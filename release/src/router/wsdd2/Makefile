@@ -9,11 +9,6 @@ include ../common.mak
 CFLAGS        ?= -Wall -Wextra -g -O0
 LDFLAGS       ?= -g
 OBJFILES      = wsdd2.o wsd.o llmnr.o
-ifeq ($(RTCONFIG_BCMARM),y)
-ifneq ($(HND_ROUTER),y)
-	OBJFILES += ifaddrs.o
-endif
-endif
 HEADERS       = wsdd.h wsd.h
 
 PREFIX  ?= /usr

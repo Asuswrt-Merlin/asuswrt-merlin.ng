@@ -1634,7 +1634,6 @@ function wifi7_mode(obj){
 <input type="hidden" name="wl_txpower" value="<% nvram_get("wl_txpower"); %>">
 <input type="hidden" name="wl1_mumimo" value="<% nvram_get("wl1_mumimo"); %>" disabled>
 <input type="hidden" name="smart_connect_x" value="<% nvram_get("smart_connect_x"); %>">
-<input type="hidden" name="acs_dfs" value="<% nvram_get("acs_dfs"); %>">
 <input type="hidden" name="wl_optimizexbox" value='<% nvram_get("wl_optimizexbox"); %>'>
 <input type="hidden" name="wl_gmode_protection" value="<% nvram_get("wl_gmode_protection"); %>">
 <input type="hidden" name="wl_rateset" value="<% nvram_get("wl_rateset"); %>">

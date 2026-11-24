@@ -27,6 +27,8 @@
 #include "rc.h"
 #include "netool.h"
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define MyDBG(fmt,args...) \
 	if(f_exists(NETOOL_DEBUG) > 0) { \
@@ -171,6 +173,77 @@ int vpclose(FILE *fp)
 /* --------------------------------------------- *
  *           vpopen/vpclose Function End         *
  * --------------------------------------------- */
+/* Open a result file for writing without following a symlink planted at
+ * its path; root writes these files, so a followed link could truncate any
+ * file. O_NONBLOCK keeps open() from waiting on a FIFO, and only a regular
+ * file is accepted. Truncate after the type check, not in open(), so a
+ * non-regular file is never modified. Returns NULL on failure. */
+static FILE *fopen_result_nofollow(const char *path)
+{
+	FILE *fp;
+	struct stat st;
+	int fd;
+
+	fd = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK, 0600);
+	if (fd < 0)
+		return NULL;
+
+	if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+	    ftruncate(fd, 0) != 0) {
+		close(fd);
+		return NULL;
+	}
+
+	fp = fdopen(fd, "w");
+	if (fp == NULL)
+		close(fd);
+
+	return fp;
+}
+
+/* Create NETOOL_RESULT_DIR as a private directory owned by root.
+ * mkdir_if_none() would create it 0777 and accept whatever already sits at
+ * the path, so a link or directory planted there beforehand would be reused.
+ * Returns 0 on success, -1 if a safe directory cannot be guaranteed. */
+static int prepare_result_dir(void)
+{
+	struct stat st;
+
+	if (mkdir(NETOOL_RESULT_DIR, 0700) == 0)
+		return 0;
+	if (errno != EEXIST) {
+		perror("mkdir " NETOOL_RESULT_DIR);
+		return -1;
+	}
+
+	/* Something already exists: replace anything that is not a real
+	 * directory (e.g. a planted symlink), then recreate it. */
+	if (lstat(NETOOL_RESULT_DIR, &st) != 0) {
+		perror("lstat " NETOOL_RESULT_DIR);
+		return -1;
+	}
+	if (!S_ISDIR(st.st_mode)) {
+		if (unlink(NETOOL_RESULT_DIR) != 0 ||
+		    mkdir(NETOOL_RESULT_DIR, 0700) != 0) {
+			perror("recreate " NETOOL_RESULT_DIR);
+			return -1;
+		}
+		return 0;
+	}
+
+	/* A real directory: only accept it when root owns it. */
+	if (st.st_uid != 0) {
+		ErrorMsg("%s is not owned by root\n", NETOOL_RESULT_DIR);
+		return -1;
+	}
+	if (chmod(NETOOL_RESULT_DIR, 0700) != 0) {
+		perror("chmod " NETOOL_RESULT_DIR);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int do_ping(void *rInfo)
 {
 	FILE *fp, *fp_w;
@@ -181,8 +254,10 @@ static int do_ping(void *rInfo)
 	char jitter_tmp[64]={0};
 	char *pk_loss;
 	char *ping, *p, *end;
+	char obj[512];
 	int  len;
 	int  loop;
+	int  first;
 	
 	REQUEST_INFO_T *req = rInfo;
 	
@@ -198,7 +273,7 @@ static int do_ping(void *rInfo)
 	
 	fp = NULL;
 	
-	if ((fp_w = fopen(result_path, "w")) != NULL) {
+	if ((fp_w = fopen_result_nofollow(result_path)) != NULL) {
 		if (!strcmp(req->target, "")) {
 			fprintf(fp_w, "[{\"loss\":\"\", \"ping\":\"\", \"jitter\":\"\"}]");
 			fclose(fp_w);
@@ -211,29 +286,46 @@ static int do_ping(void *rInfo)
 		
 		fprintf(fp_w, "[");
 		
+		first = 1;
 		while (loop > 0) {
+			/* build one object per iteration; emit only when complete */
+			obj[0] = '\0';
+
 			MyDBG("Cmd: %s\n", cmd);
 			if ((fp = vpopen(cmd, "r")) != NULL) {
 				while(fgets(buf, sizeof(buf), fp)) {
 					pk_loss = strstr(buf, "received,");
 					if (pk_loss != NULL) {
 						end = strrchr(buf, '%');
+						if (end == NULL)
+							continue;
 						*end  = '\0';
 						MyDBG("Packet Loss:%s\n", pk_loss+strlen("received,"));
-						fprintf(fp_w, "{\"loss\":\"%d\", ", atoi(pk_loss+strlen("received,")));
-						if( atoi(pk_loss+strlen("received,")) == 100) {
-							fprintf(fp_w, "\"ping\":\"\", \"jitter\":\"\"}");
+						snprintf(obj + strlen(obj), sizeof(obj) - strlen(obj),
+							"{\"loss\":\"%d\", ", safe_atoi(pk_loss+strlen("received,")));
+						if( safe_atoi(pk_loss+strlen("received,")) == 100) {
+							snprintf(obj + strlen(obj), sizeof(obj) - strlen(obj),
+								"\"ping\":\"\", \"jitter\":\"\"}");
 						}
 					}
 					ping = strstr(buf, "min/avg/max");
 					if (ping != NULL) {
 						p = strrchr(buf, '=');
-						while (*p != '/') {
+						if (p == NULL)
+							continue;
+						while (*p != '/' && *p != '\0') {
 							p++;
 						}
+						if (*p == '\0')
+							continue;
+						/* no open object (loss line missing or already closed):
+						 * appending here would emit a fragment without '{' */
+						if (strlen(obj) == 0 || obj[strlen(obj) - 1] == '}')
+							continue;
 						*p = '\0';
 						MyDBG("Ping: [%s], Jitter: [%3.3f]\n", ping+len, atof(ping+len) - atof(jitter_tmp));
-						fprintf(fp_w, "\"ping\":\"%s\", \"jitter\":\"%3.3f\"}", ping+len, atof(ping+len) - atof(jitter_tmp));
+						snprintf(obj + strlen(obj), sizeof(obj) - strlen(obj),
+							"\"ping\":\"%s\", \"jitter\":\"%3.3f\"}", ping+len, atof(ping+len) - atof(jitter_tmp));
 						snprintf(jitter_tmp, sizeof(jitter_tmp), "%s", ping+len);
 					}
 				}
@@ -244,8 +336,14 @@ static int do_ping(void *rInfo)
 			}
 			loop--;
 			
-			if (loop > 0) 
-				fprintf(fp_w, ",");
+			if (strlen(obj) > 0) {
+				/* rtt line missing: close the object so the array stays valid */
+				if (obj[strlen(obj) - 1] != '}')
+					snprintf(obj + strlen(obj), sizeof(obj) - strlen(obj),
+						"\"ping\":\"\", \"jitter\":\"\"}");
+				fprintf(fp_w, "%s%s", first ? "" : ",", obj);
+				first = 0;
+			}
 				
 			if (fp)
 				vpclose(fp);
@@ -504,7 +602,7 @@ static int do_traceroute(void *rInfo)
 		snprintf(ifpara, sizeof(ifpara), "-i %s", req->interface);
 	}
 	
-	fp_w = fopen(result_path, "w");
+	fp_w = fopen_result_nofollow(result_path);
 	
 	if (fp_w != NULL) {
 		if (!strcmp(req->target, "")) {
@@ -589,6 +687,30 @@ REQUEST_INFO_T *task_listcreate(REQUEST_INFO_T input)
 	return new;
 }
 
+/*
+ * is_valid_netool_arg:  Accepts an empty string, or one built only from
+ * alphanumerics and ".:-_%" that does not start with '-'.  This rejects
+ * anything able to escape NETOOL_RESULT_DIR or to be parsed by /bin/sh
+ * as an extra option (the CGI whitelist permits whitespace).
+ */
+static int is_valid_netool_arg(const char *s)
+{
+	if (*s == '-')
+		return 0;
+
+	/* "." and ".." would resolve to NETOOL_RESULT_DIR itself or its parent */
+	if (!strcmp(s, ".") || !strcmp(s, ".."))
+		return 0;
+
+	for (; *s; s++) {
+		if ((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') ||
+		    (*s >= '0' && *s <= '9') || strchr(".:-_%", *s))
+			continue;
+		return 0;
+	}
+	return 1;
+}
+
 void rcv_socket(int newsockfd)
 {
 	int    n;
@@ -606,11 +728,34 @@ void rcv_socket(int newsockfd)
 		return;
 	}
 	
+	/* The request arrives over a unix socket: force NUL termination before
+	 * the fields are used as C strings. */
+	req_t.ver[sizeof(req_t.ver) - 1] = '\0';
+	req_t.sort[sizeof(req_t.sort) - 1] = '\0';
+	req_t.proto[sizeof(req_t.proto) - 1] = '\0';
+	req_t.srchost[sizeof(req_t.srchost) - 1] = '\0';
+	req_t.dsthost[sizeof(req_t.dsthost) - 1] = '\0';
+	req_t.interface[sizeof(req_t.interface) - 1] = '\0';
+	req_t.target[sizeof(req_t.target) - 1] = '\0';
 	req_t.tstamp = time(&now);
 	StampToDate(req_t.tstamp, date);
 	
 	if ( req_t.type >= REQ_MODE_TOTAL || req_t.type == REQ_GET_RESULT) {
 		MyDBG("ERROR Type. REQ_TYPE:[%d]\n", req_t.type);
+		return;
+	}
+	
+	/* Validate before anything hands the request on: a traceroute request is
+	 * queued into task_list below and dispatched later without coming back
+	 * here. */
+	if (!is_valid_netool_arg(req_t.target) ||
+	    !is_valid_netool_arg(req_t.sort) ||
+	    !is_valid_netool_arg(req_t.proto) ||
+	    !is_valid_netool_arg(req_t.srchost) ||
+	    !is_valid_netool_arg(req_t.dsthost) ||
+	    !is_valid_netool_arg(req_t.interface)) {
+		ErrorMsg("Invalid request. Interface:[%s] TARGET:[%s]\n",
+			req_t.interface, req_t.target);
 		return;
 	}
 	
@@ -630,6 +775,17 @@ void rcv_socket(int newsockfd)
 			req_t.ping_cnt = 100;
 	}
 	
+	/* Bound the values handed to ping/traceroute as options.  A negative or
+	 * huge wait/hop count used to keep the child running for a very long
+	 * time, which blocks this loop on the non-threaded (fork) build. */
+	if (req_t.response < 1)
+		req_t.response = 1;
+	else if (req_t.response > 300)
+		req_t.response = 300;
+	if (req_t.hops < 1)
+		req_t.hops = 1;
+	else if (req_t.hops > 255)
+		req_t.hops = 255;
 	
 #ifndef NON_P_THREAD
 	
@@ -681,6 +837,11 @@ static int start_local_socket(void)
 		perror("listen error");
 		exit(-1);
 	}
+	/* Same umask problem: the socket would be created 0777, i.e. connectable
+	 * by any local process, and every request is executed as root. httpd is
+	 * the only client and runs as root. */
+	if (chmod(NETOOL_SOCKET_PATH, 0600) == -1)
+		ErrorMsg("chmod %s error\n", NETOOL_SOCKET_PATH);
 	
 	while (1) {
 		if ( (newsockfd = accept(sockfd, NULL, NULL)) == -1) {
@@ -693,6 +854,45 @@ static int start_local_socket(void)
 		close(newsockfd);
 	}
 }
+
+#ifndef NON_P_THREAD
+/* Worker entry for the pthread build. The request lives in the caller's
+ * stack frame, which is gone once rcv_socket() returns, so each worker gets
+ * its own heap copy and releases it when the job is done. */
+static void *req_thread_main(void *arg)
+{
+	REQUEST_INFO_T *req = arg;
+
+	switch (req->type) {
+	case REQ_PING_MODE:
+		do_ping(req);
+		break;
+	case REQ_TRACEROUTE_MODE:
+		do_traceroute(req);
+		break;
+	case REQ_PING_NORMAL_MODE:
+		do_ping_normal(req);
+		break;
+	case REQ_TRACEROUTE_NORMAL_MODE:
+		do_traceroute_normal(req);
+		break;
+	case REQ_NSLOOKUP_MODE:
+		do_nslookup(req);
+		break;
+	case REQ_NETSTAT_MODE:
+		do_netstat(req);
+		break;
+	case REQ_NETSTAT_NAT_MODE:
+		do_netstat_nat(req);
+		break;
+	default:
+		break;
+	}
+
+	free(req);
+	return NULL;
+}
+#endif
 
 static void start_req_thread(void *rInfo, int type)
 {
@@ -743,6 +943,7 @@ static void start_req_thread(void *rInfo, int type)
 	pthread_t thread;
 	pthread_attr_t attr;
 	int ret = 0;
+	REQUEST_INFO_T *req_copy;
 	
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -752,29 +953,28 @@ static void start_req_thread(void *rInfo, int type)
 	//	perror("Thread stacksize failed\n");
 	//}
 	
-	if (type == REQ_PING_MODE) {
-	
-		ret = pthread_create(&thread,NULL,(void *)&do_ping, rInfo);
-	} else if (type == REQ_TRACEROUTE_MODE) {
-		IN_EXEC = 1;
-		ret = pthread_create(&thread,NULL,(void *)&do_traceroute, rInfo);
-	} else if (type == REQ_PING_NORMAL_MODE) {
-	
-		ret = pthread_create(&thread,NULL,(void *)&do_ping_normal, rInfo);
-	} else if (type == REQ_TRACEROUTE_NORMAL_MODE) {
-	
-		ret = pthread_create(&thread,NULL,(void *)&do_traceroute_normal, rInfo);
-	} else if (type == REQ_NSLOOKUP_MODE) {
-	
-		ret = pthread_create(&thread,NULL,(void *)&do_nslookup, rInfo);
-	} else if (type == REQ_NETSTAT_MODE) {
-	
-		ret = pthread_create(&thread,NULL,(void *)&do_netstat, rInfo);
-	} else if (type == REQ_NETSTAT_NAT_MODE) {
-	
-		ret = pthread_create(&thread,NULL,(void *)&do_netstat_nat, rInfo);
+	if (type < 0 || type >= REQ_MODE_TOTAL || type == REQ_GET_RESULT) {
+		pthread_attr_destroy(&attr);
+		return;
 	}
-	
+
+	req_copy = malloc(sizeof(*req_copy));
+	if (req_copy == NULL) {
+		ErrorMsg("malloc failed\n");
+		pthread_attr_destroy(&attr);
+		return;
+	}
+	memcpy(req_copy, rInfo, sizeof(*req_copy));
+
+	if (type == REQ_TRACEROUTE_MODE)
+		IN_EXEC = 1;
+	ret = pthread_create(&thread, &attr, req_thread_main, req_copy);
+	if (ret != 0) {
+		free(req_copy);
+		if (type == REQ_TRACEROUTE_MODE)
+			IN_EXEC = 0;
+	}
+
 	if (ret != 0) {
 		ErrorMsg("Error %d %s\n", ret, strerror(errno))
 		perror("Thread create failed\n");
@@ -853,8 +1053,18 @@ int netool_main (int argc, char *argv[])
 	snprintf(pid, sizeof(pid), "%d", getpid());
 	f_write_string("/var/run/netool.pid", pid, 0, 0);
 	
-	/* mkdir */
-	mkdir_if_none(NETOOL_RESULT_DIR);
+	/* rc keeps the inherited umask at 0, so the result directory and the
+	 * listening socket would be created world-accessible. Tighten the umask
+	 * before creating either of them so there is no window before the
+	 * chmod() calls below: a local user could otherwise plant a symlink
+	 * named after a target (root would truncate whatever it points to) or
+	 * queue a connection on the socket (executed as root). Only root reads
+	 * and writes these files, so keep both private. */
+	umask(077);
+
+	/* mkdir: private, root-owned, never a planted link */
+	if (prepare_result_dir() != 0)
+		return -1;
 	
 	/* Signal */
 	signal_register();

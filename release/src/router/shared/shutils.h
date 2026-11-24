@@ -496,6 +496,8 @@ static inline char * strcat_r_s(const char *s1, const char *s2, char *buf, size_
 
 static inline int safe_atoi(const char *s)
 {
+    if (s == NULL)
+        return 0;
     return (int)strtol(s, NULL, 10);
 }
 
@@ -507,6 +509,7 @@ do {                                                            \
 } while (0)
 
 //#define dbg(fmt, args...) do { FILE *fp = fopen("/dev/console", "w"); if (fp) { fprintf(fp, fmt, ## args); fclose(fp); } else fprintf(stderr, fmt, ## args); } while (0)
+#define dbg2(fmt, args...) do { FILE *fp = fopen("/dev/console", "w"); if (fp) { fprintf(fp, fmt, ## args); fclose(fp); } else fprintf(stderr, fmt, ## args); } while (0)
 extern void dbg(const char * format, ...);
 #define dbG(fmt, args...) dbg("%s(0x%04x): " fmt , __FUNCTION__ , __LINE__, ## args)
 
@@ -671,5 +674,8 @@ extern void wait_ntp_repeat(unsigned long usec, unsigned int count);
 extern int ping_target_with_size(char *target, unsigned int size, unsigned int count, unsigned int wait_time, double loss_rate);
 extern int parse_ping_content(char *fname, ping_result_t *out);
 extern int replace_literal_newline(char *inputstr, char *output, int buflen);
+extern int safe_popen(const char *cmd, pid_t *pid);
+extern int safe_popen_argv(const char *path, char *const argv[], pid_t *child_pid);
+extern int safe_pclose(pid_t pid, int *wait_status);
 
 #endif /* _shutils_h_ */
