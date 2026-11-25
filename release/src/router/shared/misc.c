@@ -7521,6 +7521,12 @@ int vpnc_use_tunnel(int vpnc_unit, const char* proto)
 	}
 	return 0;
 }
+#else
+/* Prebuilt mastiff calls this even when UAC_TUNNEL is disabled */
+int vpns_use_tunnel(void)
+{
+	return 0;
+}
 #endif
 
 #if defined(RTCONFIG_ACCOUNT_BINDING)
