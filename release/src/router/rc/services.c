@@ -5134,8 +5134,17 @@ start_ddns(char *caller, int isAidisk)
 		snprintf(user, sizeof(user), "%s", nvram_safe_get("ddns_hostname_x"));
 #endif
 	snprintf(host, sizeof(host), "%s", nvram_safe_get("ddns_hostname_x"));
-	if (!is_valid_domainname(ppp_safe_escape(host, escaped_host, sizeof(escaped_host)))) {
+	ppp_safe_escape(host, escaped_host, sizeof(escaped_host));
+	/* Custom and Oray DDNS don't require a hostname */
+	if ((*host || (strcmp(server, "CUSTOM") && strcmp(server, "WWW.ORAY.COM")))
+	    && !is_valid_domainname(escaped_host)) {
 		logmessage(log_title, "Invalid domain name!");
+		if (!isAidisk) {
+			/* Final error: don't let watchdog keep retrying */
+			nvram_unset("ddns_updated");
+			nvram_set("ddns_return_code", "unknown_error");
+			nvram_set("ddns_return_code_chk", "unknown_error");
+		}
 		return -1;
 	}
 
