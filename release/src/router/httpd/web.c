@@ -16544,6 +16544,76 @@ err:
 	fcntl(fileno(stream), F_SETOWN, -ret);
 }
 
+/* Newer closed source libnvram skips a few variables for "Security reasons".
+ * Re-apply those from the uploaded profile from within httpd. */
+static void restore_protected_nvram(const char *file)
+{
+	FILE *fp;
+	char header[8], *buf, *p, *v;
+	uint32_t filelen;
+	size_t count, i;
+	unsigned char rand = 0;
+	int encoded;
+
+	if ((fp = fopen(file, "r")) == NULL)
+		return;
+
+	if (fread(header, 1, sizeof(header), fp) != sizeof(header)) {
+		fclose(fp);
+		return;
+	}
+
+	memcpy(&filelen, header + 4, sizeof(filelen));
+	if (!strncmp(header, PROFILE_HEADER, 4)) {
+		encoded = 0;
+	} else if (!strncmp(header, PROFILE_HEADER_NEW, 4)) {
+		encoded = 1;
+		filelen = le32_to_cpu(filelen) & 0xffffff;
+		rand = (unsigned char) header[7];
+	} else {
+		fclose(fp);
+		return;
+	}
+
+	if (filelen == 0 || filelen > 0x1000000 || (buf = calloc(1, filelen + 1)) == NULL) {
+		fclose(fp);
+		return;
+	}
+
+	count = fread(buf, 1, filelen, fp);
+	fclose(fp);
+
+	/* Same decoding as nvram_restore_new() */
+	if (encoded) {
+		for (i = 0; i < count; i++) {
+			if ((unsigned char) buf[i] > 0xfc) {
+				if (i > 0 && buf[i-1] != 0x0)
+					buf[i] = 0x0;
+			} else
+				buf[i] = 0xff + rand - buf[i];
+		}
+	}
+	buf[count] = '\0';
+
+	for (p = buf; p < buf + count; ) {
+		if (!isprint((unsigned char) *p)) {
+			p++;
+			continue;
+		}
+		v = strchr(p, '=');
+		if (v == NULL) {
+			p += strlen(p) + 1;
+			continue;
+		}
+		*v++ = '\0';
+		if (!strncmp(p, "sshd_", 5) && strcmp(nvram_safe_get(p), v))
+			nvram_set(p, v);
+		p = v + strlen(v) + 1;
+	}
+
+	free(buf);
+}
+
 static void
 do_upload_cgi(char *url, FILE *stream)
 {
@@ -16575,6 +16645,7 @@ do_upload_cgi(char *url, FILE *stream)
 		logmessage("savejffs", "Restore jffs cfgs to /jffs. (return %d)", r);
 #endif
 		sys_upload("/tmp/settings_u.prf");
+		restore_protected_nvram("/tmp/settings_u.prf");
 #ifdef RTCONFIG_LANTIQ
 		system("rm -f /jffs/db_*.tgz");
 #endif
