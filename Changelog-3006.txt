@@ -21,6 +21,8 @@ Asuswrt-Merlin 3006.xxx Changelog
              UI4 pages (GT-BE19000AI)
   - CHANGED: Don't report "no DDNS change" on every IPv6
              refresh/update unless ddns_debug
+  - CHANGED: Stop logging acsd (Auto Channel Selection Daemon)
+             activity to syslog by default.
   - FIXED: Various issues with Dual WAN failover/failback,
            and DNS probing (TheUnboundDeveloper/Claude)
   - FIXED: Various issues with the "Internet is down"
