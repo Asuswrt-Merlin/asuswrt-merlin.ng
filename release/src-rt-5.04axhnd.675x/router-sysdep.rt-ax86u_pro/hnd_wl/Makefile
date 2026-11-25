@@ -90,7 +90,7 @@ $(info "wlsubdirs: $(wlsubdirs)")
 .NOTPARALLEL:
 include $(src)/wl_generic.mk
 
-ifneq ($(CMWIFI)$(CONFIG_BCM_WLAN_RDKB),)
+#ifneq ($(CMWIFI)$(CONFIG_BCM_WLAN_RDKB),)
 $(info ### Writing $(TARGET)-objs to $(src)/wlobjs.tmp ###)
 $(shell echo "$(addprefix $(src)/,$($(TARGET)-objs))" > $(src)/wlobjs.tmp)
 
@@ -101,4 +101,4 @@ override cmd_link_multi-m = $(LD) $(ld_flags) -r -o $@ $(cmd_secanalysis) @$(src
 # Replace it by wlobjs.tmp.
 override cmd_mod = cat $(src)/wlobjs.tmp > $@; $(cmd_undef_syms) > $@
 
-endif # CMWIFI
+#endif # CMWIFI
