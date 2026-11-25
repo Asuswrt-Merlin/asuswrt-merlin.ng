@@ -24683,22 +24683,29 @@ void setup_leds()
 	/* Like the LED button and ctrl_led, only act on a state change (led_val
 	 * holds the last applied state): setAllLedNormal() resets the ledg/antled
 	 * schemes on some models, overriding a user-disabled Aura effect */
-	if (AllLED == !!nvram_get_int("led_val"))
-		return;
+	if (AllLED != !!nvram_get_int("led_val"))
 #endif
-
-	if (AllLED == 0)
-		setAllLedOff();
-	else
-		setAllLedNormal();
+	{
+		if (AllLED == 0)
+			setAllLedOff();
+		else
+			setAllLedNormal();
 
 #ifdef RTCONFIG_SW_CTRL_ALLLED
-	nvram_set_int("led_val", AllLED);
-	nvram_commit();
+		nvram_set_int("led_val", AllLED);
+		nvram_commit();
 #endif
 
 #if defined(RTCONFIG_RGBLED)
-	start_aurargb();
+		start_aurargb();
+#endif
+	}
+
+#ifdef RTCONFIG_HND_ROUTER_AX
+	/* Have wanduck refresh the WAN error LED: setAllLedOff() turned it off,
+	 * or led_wan_err may have just changed */
+	if (AllLED == 0)
+		kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
 #endif
 }
 
