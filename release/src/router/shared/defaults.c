@@ -2247,6 +2247,9 @@ struct nvram_tuple router_defaults[] = {
 	{ "AllLED_brightness", "255", CKN_STR_DEFAULT, CKN_TYPE_DEFAULT, CKN_ACC_LEVEL_DEFAULT, CKN_ENC_DEFAULT, 0 },
 	{ "led_val", "1", CKN_STR1, CKN_TYPE_DEFAULT, CKN_ACC_LEVEL_DEFAULT, CKN_ENC_DEFAULT, 0 },
 #endif
+#ifdef RTCONFIG_HND_ROUTER_AX
+	{ "led_wan_err", "0", CKN_STR1, CKN_TYPE_DEFAULT, CKN_ACC_LEVEL_DEFAULT, CKN_ENC_DEFAULT, 0 },	// Red WAN LED on WAN errors while LEDs are off
+#endif
 #if defined(RTCONFIG_SW_BTN)
 	{ "btnsw_onoff", "0", CKN_STR1, CKN_TYPE_DEFAULT, CKN_ACC_LEVEL_DEFAULT, CKN_ENC_DEFAULT, 0 },
 	{ "btnsw_vpn_idx", "0", CKN_STR1, CKN_TYPE_DEFAULT, CKN_ACC_LEVEL_DEFAULT, CKN_ENC_DEFAULT, 0 },
