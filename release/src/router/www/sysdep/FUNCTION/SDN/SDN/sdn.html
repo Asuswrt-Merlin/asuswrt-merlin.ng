@@ -90,7 +90,7 @@ var app_control = {
 	})()
 }
 $('link[group="extend_css"]').remove();
-if(theme == "WHITE" || theme == "ROG" || theme == "TUF" || theme == "PROART"){
+if(isSupport("UI4") || theme == "WHITE" || theme == "ROG" || theme == "TUF" || theme == "PROART"){
 	if(isSupport("UI4")) {
 		$('link').last().after('<link group="extend_css" rel="stylesheet" type="text/css" href="../RWD_UI/rwd_component_v4.css">');
 		$('link').last().after('<link group="extend_css" rel="stylesheet" type="text/css" href="../SDN/sdn_v4.css">');
@@ -172,7 +172,7 @@ function initial(){
 
 	var delay_load = (app_control.type == "") ? 100 : 0;
 	setTimeout(function(){
-		if(theme == "WHITE" || theme == "ROG" || theme == "TUF" || theme == "PROART"){
+		if(isSupport("UI4") || theme == "WHITE" || theme == "ROG" || theme == "TUF" || theme == "PROART"){
 			if (isSupport("UI4")) {
 				$('link').first().before('<link rel="stylesheet" type="text/css" href="../js/weekSchedule/schedule_ui_v4.css">');
 			} else {
