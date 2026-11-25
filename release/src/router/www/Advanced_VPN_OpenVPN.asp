@@ -254,6 +254,12 @@ function initial(){
 	}
 
 	$('#divSwitchMenu').html(gen_switch_menu(vpn_server_array, "OpenVPN"));
+	if (isSupport("UI4") && typeof top.pageRedirect === "function") {
+		$('#divSwitchMenu a[href="Advanced_VPNServer_Content.asp"]').on("click", function(e) {
+			e.preventDefault();
+			top.pageRedirect("vpn", "vpns");
+		});
+	}
 
 	//check DUT is belong to private IP.
 	setTimeout("show_warning_message();", 1000);

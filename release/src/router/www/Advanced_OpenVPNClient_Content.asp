@@ -151,6 +151,12 @@ function initial()
         }
 
 	$('#divSwitchMenu').html(gen_switch_menu(vpn_client_array, "OpenVPN"));
+	if (isSupport("UI4") && typeof top.pageRedirect === "function") {
+		$('#divSwitchMenu a[href="Advanced_VPNClient_Content.asp"]').on("click", function(e) {
+			e.preventDefault();
+			top.pageRedirect("vpn", "vpnc");
+		});
+	}
 
 	showclientlist();
 

@@ -182,15 +182,18 @@
 				render() {
 					const tabList = document.getElementById('vpnTabList');
 					const supportedTabs = this.config.filter(tab => tab.support);
+					const lastTab = top.Session.get("vpn-lastPage");
+					top.Session.set("vpn-lastPage", "");
+					const activeIdx = Math.max(0, supportedTabs.findIndex(tab => tab.key === lastTab));
 					if (supportedTabs.length <= 1) {
 						tabList.style.display = 'none';
 					} else {
 						tabList.style.display = '';
 						let navHtml = '<nav class="tab-navigation p-0" role="tablist">';
 						supportedTabs.forEach((tab, idx) => {
-							const isActive = idx === 0 ? 'active' : '';
-							const ariaSelected = idx === 0 ? 'true' : 'false';
-							const tabIndex = idx === 0 ? '0' : '-1';
+							const isActive = idx === activeIdx ? 'active' : '';
+							const ariaSelected = idx === activeIdx ? 'true' : 'false';
+							const tabIndex = idx === activeIdx ? '0' : '-1';
 							navHtml += `<button class="tab-navigation__item ${isActive}" role="tab" aria-selected="${ariaSelected}" aria-controls="tab-panel-${tab.key}" tabindex="${tabIndex}" data-tab="${tab.key}">${tab.label}</button>`;
 							if (idx < supportedTabs.length - 1) {
 								navHtml += '<span class="tab-navigation__divider" aria-hidden="true"></span>';
@@ -202,7 +205,7 @@
 					if (supportedTabs.length > 0) {
 						const color = document.documentElement.getAttribute('data-asuswrt-color');
 						const theme = document.documentElement.getAttribute('data-asuswrt-theme');
-						$('#settingsWindow').css('visibility', 'hidden').attr('src', supportedTabs[0].src);
+						$('#settingsWindow').css('visibility', 'hidden').attr('src', supportedTabs[activeIdx].src);
 					}
 				},
 				bindEvents() {
