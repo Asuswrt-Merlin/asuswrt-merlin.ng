@@ -24674,10 +24674,21 @@ void setup_leds()
 	}
 
 #else 	// RTCONFIG_SW_CTRL_ALLLED
-	if (nvram_get_int("AllLED") == 0)
+	int AllLED = !!nvram_get_int("AllLED");
+
+	/* Like the LED button and ctrl_led, only act on a state change (led_val
+	 * holds the last applied state): setAllLedNormal() resets the ledg/antled
+	 * schemes on some models, overriding a user-disabled Aura effect */
+	if (AllLED == !!nvram_get_int("led_val"))
+		return;
+
+	if (AllLED == 0)
 		setAllLedOff();
 	else
 		setAllLedNormal();
+
+	nvram_set_int("led_val", AllLED);
+	nvram_commit();
 #endif	// RTCONFIG_SW_CTRL_ALLLED
 
 
