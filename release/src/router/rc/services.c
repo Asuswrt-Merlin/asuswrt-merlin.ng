@@ -12618,7 +12618,7 @@ start_services(void)
 #endif
 #ifdef GTAX6000
 	if (nvram_get_int("AllLED") == 0)
-		setup_leds();
+		setAllLedOff();
 	start_antled();
 #endif
 	start_acsd();
@@ -23375,10 +23375,25 @@ int service_main(int argc, char *argv[])
 
 void setup_leds()
 {
-	if (nvram_get_int("AllLED") == 0)
+	int AllLED = !!nvram_get_int("AllLED");
+
+#ifdef RTCONFIG_SW_CTRL_ALLLED
+	/* Like the LED button and ctrl_led, only act on a state change (led_val
+	 * holds the last applied state): setAllLedNormal() resets the ledg/antled
+	 * schemes on some models, overriding a user-disabled Aura effect */
+	if (AllLED == !!nvram_get_int("led_val"))
+		return;
+#endif
+
+	if (AllLED == 0)
 		setAllLedOff();
 	else
 		setAllLedNormal();
+
+#ifdef RTCONFIG_SW_CTRL_ALLLED
+	nvram_set_int("led_val", AllLED);
+	nvram_commit();
+#endif
 
 #if defined(RTCONFIG_RGBLED)
 	start_aurargb();
