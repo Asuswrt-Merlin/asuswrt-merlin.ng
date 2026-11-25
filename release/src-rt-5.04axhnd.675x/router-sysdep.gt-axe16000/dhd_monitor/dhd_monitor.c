@@ -768,6 +768,18 @@ static int dm_handle_process(char *pid, unsigned int depth)
 
 	snprintf(process_dm_path, sizeof(process_dm_path), "%s/%s", DM_DIR, pid);
 
+	/* Reject control files not owned by root to prevent command injection. */
+	{
+		struct stat st;
+		if (stat(process_dm_path, &st) != 0 || st.st_uid != 0) {
+			dprintf("%s: %s not owned by root (uid=%d), removing\n",
+				__FUNCTION__, process_dm_path,
+				(stat(process_dm_path, &st) == 0) ? (int)st.st_uid : -1);
+			remove(process_dm_path);
+			return FALSE;
+		}
+	}
+
 	// if process is not active
 	if (dm_read_pid_info_file(process_dm_path, dep_cmd, sizeof(dep_cmd),
 			process_cmd, sizeof(process_cmd)) != 0) {
