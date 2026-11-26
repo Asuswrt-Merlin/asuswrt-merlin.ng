@@ -2472,7 +2472,7 @@ void start_stubby(void)
 #endif
 {
 	const static char *stubby_config = "/etc/stubby/stubby.yml";
-	const static char *stubby_log = NULL;
+	const char *stubby_log = NULL;
 	char *stubby_argv[] = { "/usr/sbin/stubby",
 		"-g", /* Run in background via _eval, and will not write /var/run/stubby.pid */
 		"-C", (char *)stubby_config,
