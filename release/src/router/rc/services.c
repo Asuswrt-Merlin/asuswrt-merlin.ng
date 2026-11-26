@@ -2187,8 +2187,9 @@ void start_dnsmasq(void)
 		/* DNS server */
 		value = nvram_conf_safe_get("ipv6_dns1_x");
 		value2 = nvram_conf_safe_get("ipv6_dns2_x");
-		const char *p = NULL, *p2 = NULL;
-		if ((*value && *(p = ipv6_address(value))) || (*value2 && *(p2 = ipv6_address(value2)))) {
+		const char *p = *value ? ipv6_address(value) : "";
+		const char *p2 = *value2 ? ipv6_address(value2) : "";
+		if (*p || *p2) {
 #if defined(RTCONFIG_IPV6) && (defined(RTAX82_XD6) || defined(RTAX82_XD6S) || defined(XD6_V2) || defined(ET12))
 			if (!strncmp(nvram_conf_safe_get("territory_code"), "CH", 2))
 				nvram_unset("ipv6_dns");
@@ -5192,8 +5193,17 @@ start_ddns(char *caller, int isAidisk)
 		snprintf(user, sizeof(user), "%s", nvram_safe_get("ddns_hostname_x"));
 #endif
 	snprintf(host, sizeof(host), "%s", nvram_safe_get("ddns_hostname_x"));
-	if (!is_valid_domainname(ppp_safe_escape(host, escaped_host, sizeof(escaped_host)))) {
+	ppp_safe_escape(host, escaped_host, sizeof(escaped_host));
+	/* Custom and Oray DDNS don't require a hostname */
+	if ((*host || (strcmp(server, "CUSTOM") && strcmp(server, "WWW.ORAY.COM")))
+	    && !is_valid_domainname(escaped_host)) {
 		logmessage(log_title, "Invalid domain name!");
+		if (!isAidisk) {
+			/* Final error: don't let watchdog keep retrying */
+			nvram_unset("ddns_updated");
+			nvram_set("ddns_return_code", "unknown_error");
+			nvram_set("ddns_return_code_chk", "unknown_error");
+		}
 		return -1;
 	}
 
@@ -24643,22 +24653,29 @@ void setup_leds()
 	/* Like the LED button and ctrl_led, only act on a state change (led_val
 	 * holds the last applied state): setAllLedNormal() resets the ledg/antled
 	 * schemes on some models, overriding a user-disabled Aura effect */
-	if (AllLED == !!nvram_get_int("led_val"))
-		return;
+	if (AllLED != !!nvram_get_int("led_val"))
 #endif
-
-	if (AllLED == 0)
-		setAllLedOff();
-	else
-		setAllLedNormal();
+	{
+		if (AllLED == 0)
+			setAllLedOff();
+		else
+			setAllLedNormal();
 
 #ifdef RTCONFIG_SW_CTRL_ALLLED
-	nvram_set_int("led_val", AllLED);
-	nvram_commit();
+		nvram_set_int("led_val", AllLED);
+		nvram_commit();
 #endif
 
 #if defined(RTCONFIG_RGBLED)
-	start_aurargb();
+		start_aurargb();
+#endif
+	}
+
+#ifdef RTCONFIG_HND_ROUTER_AX
+	/* Have wanduck refresh the WAN error LED: setAllLedOff() turned it off,
+	 * or led_wan_err may have just changed */
+	if (AllLED == 0)
+		kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
 #endif
 }
 
