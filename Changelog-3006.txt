@@ -2,6 +2,9 @@ Asuswrt-Merlin 3006.xxx Changelog
 =================================
 
 3006.102.10 (xx-xxx-2026)
+  - NEW: Option to have the WAN LED still turn up red when LEDs
+         are disabled (for models supporting dual coloured
+         WAN LED). The settings is on the System page.
   - NEW: Added non-ROG build for the GT-BE19000AI (experimental)
   - UPDATED: Merged with GPL 102_40563 for the RT-BE92U, which
              includes a move to BCM SDK 6.2.0.  That means newer
@@ -23,6 +26,8 @@ Asuswrt-Merlin 3006.xxx Changelog
              refresh/update unless ddns_debug
   - CHANGED: Stop logging acsd (Auto Channel Selection Daemon)
              activity to syslog by default.
+  - CHANGED: Now by default when saving your settings, the Asus
+             DDNS will be included, unless you un-tick the box.
   - FIXED: Various issues with Dual WAN failover/failback,
            and DNS probing (TheUnboundDeveloper/Claude)
   - FIXED: Various issues with the "Internet is down"
@@ -45,6 +50,15 @@ Asuswrt-Merlin 3006.xxx Changelog
   - FIXED: CVE-2026-98432 and CVE-2026-99288 in kernel 4.19 and 5.15.
   - FIXED: Various memory leaks, mostly in error handling paths
            (Prashant/Claude)
+  - FIXED: RGB logo would always re-enable when making changes to
+           System page. (Claude)
+  - FIXED: Navigating back to legacy VPN protocols pages would fail
+           loading the page properly on GT-BE19000AI. (Claude)
+  - FIXED: sshd_ variables not getting restored when loading
+           a saved config (new "security measure" in closed
+           source code interfering). Worked around it. (Claude)
+  - FIXED: Don't loop retry registering DDNS if the hostname is
+           missing (Claude)
 
 
 3006.102.9 (23-Sept-2026)
