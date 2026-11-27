@@ -153,6 +153,76 @@ function applyRule(){
 				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
 					<thead>
 						<tr>
+							<td colspan="2">Advanced Tweaks and Hacks</td>
+						</tr>
+					</thead>
+					<tr>
+						<th>Redirect webui access to www.asusrouter.com</th>
+						<td>
+							<input type="radio" name="http_dut_redir" value="1" <% nvram_match_x("","http_dut_redir","1", "checked"); %> ><#checkbox_Yes#>
+							<input type="radio" name="http_dut_redir" value="0" <% nvram_match_x("","http_dut_redir","0", "checked"); %> ><#checkbox_No#>
+						</td>
+					</tr>
+					<tr>
+						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,4);">Firewall: Drop IPv6 neighbour solicitation broadcasts (default: No)</a></th>
+						<td>
+							<input type="radio" name="ipv6_ns_drop" class="input" value="1" <% nvram_match_x("", "ipv6_ns_drop", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="ipv6_ns_drop" class="input" value="0" <% nvram_match_x("", "ipv6_ns_drop", "0", "checked"); %>><#checkbox_No#>
+						</td>
+					</tr>
+					<tr>
+						<th>Disable Asusnat tunnel</th>
+						<td>
+							<input type="radio" name="aae_disable_force" class="input" value="1" <% nvram_match_x("", "aae_disable_force", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="aae_disable_force" class="input" value="0" <% nvram_match_x("", "aae_disable_force", "0", "checked"); %>><#checkbox_No#>
+						</td>
+					</tr>
+					<tr>
+						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,21);">dhcpd: send empty WPAD with a carriage return</a></th>
+						<td>
+							<input type="radio" name="dhcpd_send_wpad" class="input" value="1" <% nvram_match_x("", "dhcpd_send_wpad", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="dhcpd_send_wpad" class="input" value="0" <% nvram_match_x("", "dhcpd_send_wpad", "0", "checked"); %>><#checkbox_No#>
+						</td>
+					</tr>
+				</table>
+				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
+					<thead>
+						<tr>
+							<td colspan="2">Logging options</td>
+						</tr>
+					</thead>
+					<tr>
+						<th>DDNS: enable debug logging</th>
+						<td>
+							<input type="radio" name="ddns_debug" class="input" value="1" <% nvram_match_x("", "ddns_debug", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="ddns_debug" class="input" value="0" <% nvram_match_x("", "ddns_debug", "0", "checked"); %>><#checkbox_No#>
+						</td>
+					</tr>
+					<tr id="ipv6_debug_tr">
+						<th>IPv6: enable DHCPv6 client debug logging</th>
+						<td>
+							<input type="radio" name="ipv6_debug" class="input" value="1" <% nvram_match_x("", "ipv6_debug", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="ipv6_debug" class="input" value="0" <% nvram_match_x("", "ipv6_debug", "0", "checked"); %>><#checkbox_No#>
+						</td>
+					</tr>
+					<tr id="stubby_debug_tr">
+						<th>DNS Privacy: enable Stubby debug logging (to /tmp/stubby.log)</th>
+						<td>
+							<input type="radio" name="stubby_debug" class="input" value="1" <% nvram_match_x("", "stubby_debug", "1", "checked"); %>><#checkbox_Yes#>
+							<input type="radio" name="stubby_debug" class="input" value="0" <% nvram_match_x("", "stubby_debug", "0", "checked"); %>><#checkbox_No#>
+						</td>
+					</tr>
+					<tr id="acsd_syslog_tr">
+						<th>Wireless: log ACSD (auto channel selection) events to syslog</th>
+						<td>
+							<input type="radio" name="acsd_syslog" class="input" value="1"><#checkbox_Yes#>
+							<input type="radio" name="acsd_syslog" class="input" value="0"><#checkbox_No#>
+						</td>
+					</tr>
+				</table>
+				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
+					<thead>
+						<tr>
 							<td colspan="2">TCP/IP settings</td>
 						</tr>
 					</thead>
@@ -241,76 +311,6 @@ function applyRule(){
 						<td>
 							<input type="text" maxlength="5" class="input_6_table" name="udp_unreplied" onKeyPress="return validator.isNumber(this,event);" value="">
 							<span>Default: 30</span>
-						</td>
-					</tr>
-				</table>
-				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
-					<thead>
-						<tr>
-							<td colspan="2">Advanced Tweaks and Hacks</td>
-						</tr>
-					</thead>
-					<tr>
-						<th>Redirect webui access to www.asusrouter.com</th>
-						<td>
-							<input type="radio" name="http_dut_redir" value="1" <% nvram_match_x("","http_dut_redir","1", "checked"); %> ><#checkbox_Yes#>
-							<input type="radio" name="http_dut_redir" value="0" <% nvram_match_x("","http_dut_redir","0", "checked"); %> ><#checkbox_No#>
-						</td>
-					</tr>
-					<tr>
-						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,4);">Firewall: Drop IPv6 neighbour solicitation broadcasts (default: No)</a></th>
-						<td>
-							<input type="radio" name="ipv6_ns_drop" class="input" value="1" <% nvram_match_x("", "ipv6_ns_drop", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="ipv6_ns_drop" class="input" value="0" <% nvram_match_x("", "ipv6_ns_drop", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr>
-						<th>Disable Asusnat tunnel</th>
-						<td>
-							<input type="radio" name="aae_disable_force" class="input" value="1" <% nvram_match_x("", "aae_disable_force", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="aae_disable_force" class="input" value="0" <% nvram_match_x("", "aae_disable_force", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr>
-						<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(50,21);">dhcpd: send empty WPAD with a carriage return</a></th>
-						<td>
-							<input type="radio" name="dhcpd_send_wpad" class="input" value="1" <% nvram_match_x("", "dhcpd_send_wpad", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="dhcpd_send_wpad" class="input" value="0" <% nvram_match_x("", "dhcpd_send_wpad", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-				</table>
-				<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
-					<thead>
-						<tr>
-							<td colspan="2">Logging options</td>
-						</tr>
-					</thead>
-					<tr>
-						<th>DDNS: enable debug logging</th>
-						<td>
-							<input type="radio" name="ddns_debug" class="input" value="1" <% nvram_match_x("", "ddns_debug", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="ddns_debug" class="input" value="0" <% nvram_match_x("", "ddns_debug", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr id="ipv6_debug_tr">
-						<th>IPv6: enable DHCPv6 client debug logging</th>
-						<td>
-							<input type="radio" name="ipv6_debug" class="input" value="1" <% nvram_match_x("", "ipv6_debug", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="ipv6_debug" class="input" value="0" <% nvram_match_x("", "ipv6_debug", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr id="stubby_debug_tr">
-						<th>DNS Privacy: enable Stubby debug logging (to /tmp/stubby.log)</th>
-						<td>
-							<input type="radio" name="stubby_debug" class="input" value="1" <% nvram_match_x("", "stubby_debug", "1", "checked"); %>><#checkbox_Yes#>
-							<input type="radio" name="stubby_debug" class="input" value="0" <% nvram_match_x("", "stubby_debug", "0", "checked"); %>><#checkbox_No#>
-						</td>
-					</tr>
-					<tr id="acsd_syslog_tr">
-						<th>Wireless: log ACSD (auto channel selection) events to syslog</th>
-						<td>
-							<input type="radio" name="acsd_syslog" class="input" value="1"><#checkbox_Yes#>
-							<input type="radio" name="acsd_syslog" class="input" value="0"><#checkbox_No#>
 						</td>
 					</tr>
 				</table>
