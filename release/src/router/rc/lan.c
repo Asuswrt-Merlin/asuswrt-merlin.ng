@@ -6995,9 +6995,7 @@ void restart_wireless(void)
 #endif
 #endif
 
-#ifdef RTAC87U
-	if(nvram_get_int("AllLED") == 0) setAllLedOff();
-#endif
+	setup_leds();
 #ifdef RTCONFIG_NEW_USER_LOW_RSSI
 	start_roamast();
 #endif
