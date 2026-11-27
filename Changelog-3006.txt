@@ -6,6 +6,9 @@ Asuswrt-Merlin 3006.xxx Changelog
          are disabled (for models supporting dual coloured
          WAN LED). The settings is on the System page.
   - NEW: Added non-ROG build for the GT-BE19000AI (experimental)
+  - NEW: Added debug logging toggles to the Administration->Tweaks
+         page for DDNS, Stubby, DHCPv6 client and ACSD
+         (which is no longer enabled by default).
   - UPDATED: Merged with GPL 102_40563 for the RT-BE92U, which
              includes a move to BCM SDK 6.2.0.  That means newer
              Linux kernel, and a switch from TrendMicro's BWDPI
@@ -17,15 +20,16 @@ Asuswrt-Merlin 3006.xxx Changelog
   - UPDATED: OpenSSL to 3.5.9.
   - UPDATED: OpenVPN to 2.7.9.
   - UPDATED: haveged to 1.9.27.
-  - UPDATED: Updated Tor to 0.4.9.17
-  - UPDATED: CA bundle (removing the emSign signing certs)
+  - UPDATED: Tor to 0.4.9.17
   - UPDATED: zlib to 1.3.2 (ported from 388_25817)
+  - UPDATED: CA bundle (removing the emSign signing certs)
   - CHANGED: Various theme-awareness improvements to the
              UI4 pages (GT-BE19000AI)
   - CHANGED: Don't report "no DDNS change" on every IPv6
-             refresh/update unless ddns_debug
+             refresh/update unless ddns_debug is enabled.
   - CHANGED: Stop logging acsd (Auto Channel Selection Daemon)
-             activity to syslog by default.
+             activity to syslog by default (can be re-enabled
+             on the Administration->Tweaks page).
   - CHANGED: Now by default when saving your settings, the Asus
              DDNS will be included, unless you un-tick the box.
   - FIXED: Various issues with Dual WAN failover/failback,
@@ -36,9 +40,10 @@ Asuswrt-Merlin 3006.xxx Changelog
            WAN interface. Now treat it like we treat
            Multiservice WAN connections.
   - FIXED: CVE-2026-107159 in miniupnpd.
-  - FIXED: Webui would stall or fail to load certain
+  - FIXED: Webui would stall or fail to load random
            elements when using Chrome on a self-signed
-           certificate. (Claude)
+           certificate. That bug has been bothering me
+           for years - good riddance. (Claude)
   - FIXED: VPN Director rules would be lost when one WAN
            went down in Dual WAN Load Balance mode. (Claude)
   - FIXED: Namecheap DDNS could update the wrong IP when under
@@ -46,8 +51,10 @@ Asuswrt-Merlin 3006.xxx Changelog
   - FIXED: Wrong FQDN used with Namecheap (Alex Iordanescu/Claude)
   - FIXED: Webui code injection through malicious UPnP
            comment (andrewfader)
-  - FIXED: httpd could crash on malformed AiMesh data file (chrisfu)
-  - FIXED: CVE-2026-98432 and CVE-2026-99288 in kernel 4.19 and 5.15.
+  - FIXED: httpd could crash on malformed AiMesh data file
+           (chrisfu)
+  - FIXED: CVE-2026-98432 and CVE-2026-99288 in kernel 4.19 and
+           5.15.
   - FIXED: Various memory leaks, mostly in error handling paths
            (Prashant/Claude)
   - FIXED: RGB logo would always re-enable when making changes to
@@ -57,8 +64,12 @@ Asuswrt-Merlin 3006.xxx Changelog
   - FIXED: sshd_ variables not getting restored when loading
            a saved config (new "security measure" in closed
            source code interfering). Worked around it. (Claude)
-  - FIXED: Don't loop retry registering DDNS if the hostname is
-           missing (Claude)
+  - FIXED: Would keep retrying registering DDNS in a loop if the
+           hostname is missing, for instance when using Asus DDNS
+           and trying to restore a config file generated without
+           DDNS transfer enabled.
+  - FIXED: Wifi LEDs would turn back on when the lan service was
+           restarted.  Now re-disable them afterward. (Wifi 6)
 
 
 3006.102.9 (23-Sept-2026)
